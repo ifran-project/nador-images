@@ -57,7 +57,7 @@ ALERT_FILE = "/tmp/alert.json"
 DRY_RUN = int(os.getenv("DRY_RUN", "0"))
 
 UE_MAPPER_LIMIT = int(os.getenv("UE_MAPPER_LIMIT", "2000"))
-PROBE_IMAGE = os.getenv("PROBE_IMAGE", "ghcr.io/yassir63/ebpf-latency-probe:2026w45")
+PROBE_IMAGE = os.getenv("PROBE_IMAGE", "ghcr.io/ifran-project/ebpf-latency-probe:2026w45")
 
 DEFAULT_UE_MAPPER_URL = f"http://ue-mapper-api.{MONITORING_NS}.svc.cluster.local"
 UE_MAPPER_URL = os.getenv("UE_MAPPER_URL", DEFAULT_UE_MAPPER_URL)

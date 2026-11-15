@@ -27,8 +27,8 @@ while the OAI calculator uses its own directory.
 ## Automatic builds and publication
 
 The workflow checks and builds changed components on pull requests and pushes to `main`.
-Successful `main` builds publish to `ghcr.io/yassir63` using the `GHCR_PUBLISH_TOKEN`
-Actions secret (a classic token for `yassir63` with `write:packages`). Pull requests do not publish.
+Successful `main` builds publish to `ghcr.io/ifran-project` using GitHub Actions'
+`GITHUB_TOKEN`. Pull requests do not publish.
 Shared `common/` changes rebuild its consumers. Initial pushes and manual runs build every image.
 Changing the workflow, `images.json` or `.dockerignore` rebuilds every image.
 

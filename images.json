@@ -5,7 +5,7 @@
     "platform": "linux/amd64",
     "current_version": "2026w45",
     "version_record": "versions/controller/2026w45.json",
-    "ghcr_image": "ghcr.io/yassir63/kopf-controller:2026w45",
+    "ghcr_image": "ghcr.io/ifran-project/kopf-controller:2026w45",
     "monitoring_target": "components.monitoring-controller"
   },
   "throughput-probe": {
@@ -14,7 +14,7 @@
     "platform": "linux/amd64",
     "current_version": "2026w44",
     "version_record": "versions/throughput-probe/2026w44.json",
-    "ghcr_image": "ghcr.io/yassir63/ebpf-throughput-probe:2026w44",
+    "ghcr_image": "ghcr.io/ifran-project/ebpf-throughput-probe:2026w44",
     "monitoring_target": "probes.throughput"
   },
   "latency-probe": {
@@ -23,7 +23,7 @@
     "platform": "linux/amd64",
     "current_version": "2026w45",
     "version_record": "versions/latency-probe/2026w45.json",
-    "ghcr_image": "ghcr.io/yassir63/ebpf-latency-probe:2026w45",
+    "ghcr_image": "ghcr.io/ifran-project/ebpf-latency-probe:2026w45",
     "monitoring_target": "probes.probe"
   },
   "ue-mapper": {
@@ -32,7 +32,7 @@
     "platform": "linux/amd64",
     "current_version": "2026w43",
     "version_record": "versions/ue-mapper/2026w43.json",
-    "ghcr_image": "ghcr.io/yassir63/ue_mapper_api:2026w43",
+    "ghcr_image": "ghcr.io/ifran-project/ue_mapper_api:2026w43",
     "monitoring_target": "components.ue-mapper-api"
   },
   "amf-sniffer": {
@@ -41,7 +41,7 @@
     "platform": "linux/amd64",
     "current_version": "2026w43",
     "version_record": "versions/amf-sniffer/2026w43.json",
-    "ghcr_image": "ghcr.io/yassir63/amf-sniffer:2026w43",
+    "ghcr_image": "ghcr.io/ifran-project/amf-sniffer:2026w43",
     "monitoring_target": "probes.amf_sniffer"
   },
   "smf-sniffer": {
@@ -50,7 +50,7 @@
     "platform": "linux/amd64",
     "current_version": "2026w43",
     "version_record": "versions/smf-sniffer/2026w43.json",
-    "ghcr_image": "ghcr.io/yassir63/smf-sniffer:2026w43",
+    "ghcr_image": "ghcr.io/ifran-project/smf-sniffer:2026w43",
     "monitoring_target": "probes.smf_sniffer"
   },
   "packet-pairer": {
@@ -59,7 +59,7 @@
     "platform": "linux/amd64",
     "current_version": "2026w43",
     "version_record": "versions/packet-pairer/2026w43.json",
-    "ghcr_image": "ghcr.io/yassir63/packet-pairer:2026w43",
+    "ghcr_image": "ghcr.io/ifran-project/packet-pairer:2026w43",
     "monitoring_target": "components.packet-pairer"
   },
   "kpi-calculator-oai": {
@@ -68,7 +68,7 @@
     "platform": "linux/amd64",
     "current_version": "2026w43-radio-scoped",
     "version_record": "versions/kpi-calculator-oai/2026w43-radio-scoped.json",
-    "ghcr_image": "ghcr.io/yassir63/kpi-calculator-oai:2026w43-radio-scoped",
+    "ghcr_image": "ghcr.io/ifran-project/kpi-calculator-oai:2026w43-radio-scoped",
     "monitoring_target": "components.kpi-calculator-oai"
   }
 }
