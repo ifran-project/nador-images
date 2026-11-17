@@ -1,0 +1,13 @@
+{
+  "image": "ghcr.io/ifran-project/nador-n3-oneway:multi-anchor",
+  "changes": "Observe multiple N3 peers per target and match one-way samples by link, direction and tunnel. Measure transit across each UPF independently.",
+  "source_files_sha256": {
+    "n3-oneway/Dockerfile": "0ada7eee157d1ef98d44655c9d69beaf518b2d58fce504bac705e2197d4f6077",
+    "n3-oneway/observer.bpf.c": "94dfa51d8900967287a7ffa39585b29412e1f464e12903682b7027863f53ea7a",
+    "n3-oneway/observer.c": "7ae6eda11eea9ff8f6f14a9873700ccd0486f1024be2d13b7a16c823ed1afa06",
+    "n3-oneway/observer.h": "182cacba14b40b5b749210937544326280815890009941efd5f2576c7480406a",
+    "n3-oneway/oneway.py": "bb294b73cbec6f637a45e32f7c03cccd1faede69e847738c8eb619c689cee372",
+    "n3-oneway/upf_transit.py": "5e9878f1a8293903412c903513f5c09b4babedd49040b8c7ee750d9610eb69bc",
+    "n3-oneway/target_process.py": "fd1a0a89896cac723a4c6bff4c144504c4ad2d870a29e7f53b6b796ddf4447fc"
+  }
+}

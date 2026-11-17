@@ -8,6 +8,25 @@
     "ghcr_image": "ghcr.io/ifran-project/kopf-controller:2026w45",
     "monitoring_target": "components.monitoring-controller"
   },
+  "external-controller": {
+    "source_dir": "controller",
+    "dockerfile": "controller/Dockerfile.external",
+    "context": ".",
+    "platform": "linux/amd64",
+    "current_version": "multi-upf",
+    "version_record": "versions/external-controller/multi-upf.json",
+    "ghcr_image": "ghcr.io/ifran-project/nador-controller:multi-upf",
+    "monitoring_target": "external_probes.controller"
+  },
+  "n3-oneway": {
+    "dockerfile": "n3-oneway/Dockerfile",
+    "context": ".",
+    "platform": "linux/amd64",
+    "current_version": "multi-anchor",
+    "version_record": "versions/n3-oneway/multi-anchor.json",
+    "ghcr_image": "ghcr.io/ifran-project/nador-n3-oneway:multi-anchor",
+    "monitoring_target": "external_probes.one_way"
+  },
   "throughput-probe": {
     "dockerfile": "throughput-probe/Dockerfile",
     "context": ".",

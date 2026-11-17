@@ -41,18 +41,18 @@ def reconcile_extended(core, apps, namespace):
             logging.exception("Could not reconcile %s", kind)
 
 
-def anchor(api, target):
+def ready_containers(api, target):
     selector = ",".join(f"{k}={v}" for k, v in target["selector"].items())
     pods = api.list_namespaced_pod(target["namespace"], label_selector=selector).items
-    ready = [
+    return [
         (pod, status)
         for pod in pods if not pod.metadata.deletion_timestamp and pod.spec.node_name
         for status in pod.status.container_statuses or []
         if status.name == target["container"] and status.ready and status.container_id
     ]
-    if len(ready) != 1:
-        raise ValueError(f'{target["component"]}: expected one ready target, found {len(ready)}')
-    pod, status = ready[0]
+
+
+def resolve_anchor(target, pod, status):
     interface = target.get("n3_interface") or target["interface"]
     networks = json.loads((pod.metadata.annotations or {}).get("k8s.v1.cni.cncf.io/network-status", "[]"))
     ips = [ip for item in networks if item.get("interface") == interface for ip in item.get("ips", [])]
@@ -70,7 +70,45 @@ def anchor(api, target):
             or any(env.name == "LATENCY_MODE" for env in (container.env or [])))
            for container in (pod.spec.ephemeral_containers or [])):
         point["injected_rtt_active"] = True
+    if any(container.name not in terminated and container.name.startswith("throughput-probe")
+           for container in (pod.spec.ephemeral_containers or [])):
+        point["injected_throughput_active"] = True
     return point
+
+
+def anchor(api, target):
+    ready = ready_containers(api, target)
+    if len(ready) != 1:
+        raise ValueError(f'{target["component"]}: expected one ready target, found {len(ready)}')
+    return resolve_anchor(target, *ready[0])
+
+
+def target_points(api, targets, prefix):
+    seen = set()
+    for target in targets:
+        for pod, status in ready_containers(api, target):
+            identity = target["namespace"], pod.metadata.name
+            if identity in seen:
+                continue
+            try:
+                point = resolve_anchor(target, pod, status)
+            except ValueError as exc:
+                logging.warning("Probe target %s/%s: %s", *identity, exc)
+                continue
+            seen.add(identity)
+            suffix = hashlib.sha256("/".join(identity).encode()).hexdigest()[:16]
+            yield f"{prefix or target['role']}-{suffix}", target, point
+
+
+def scoped_points(api, targets, request, kind):
+    if "targets" in request:
+        selected = [t for t in request["targets"] if kind != "throughput" or t["role"] == "upf"]
+        prefix = "throughput-upf" if kind == "throughput" else "rtt"
+        yield from target_points(api, selected, prefix)
+    else:
+        for role, target in targets.items():
+            if kind != "throughput" or role == "upf":
+                yield f"{kind}-{role}", target | {"role": role}, anchor(api, target)
 
 
 def pod_spec(role, settings, owner_uid, command, *, target=None, metrics_port=None, env=None, path="/metrics"):
@@ -96,9 +134,12 @@ def pod_spec(role, settings, owner_uid, command, *, target=None, metrics_port=No
     if target:
         spec.update(nodeName=target["node"], hostPID=True, tolerations=[{"operator": "Exists"}])
         container["securityContext"] = {"privileged": True}
+    labels = {"nador-one-way-managed": "true", "nador-one-way-role": role}
+    if target:
+        labels["nador-target-pod"] = target["pod"][:63].rstrip("-.")
     return {
         "apiVersion": "v1", "kind": "Pod",
-        "metadata": {"name": name, "labels": {"nador-one-way-managed": "true", "nador-one-way-role": role},
+        "metadata": {"name": name, "labels": labels,
                      "annotations": annotations, "ownerReferences": [{
                          "apiVersion": "v1", "kind": "ConfigMap", "name": "nador-one-way", "uid": owner_uid}]},
         "spec": spec,
@@ -119,22 +160,34 @@ def desired_pods(api, settings, targets, owner):
         if n3["log_samples"]:
             cmd.append("--log-samples")
         desired["collector"] = pod_spec("collector", settings, owner, cmd, metrics_port=55393)
-    anchors = {role: anchor(api, targets[role]) for role in ("gnb", "upf")}
-    endpoints = ["--gnb", anchors["gnb"]["ip"], "--upf", anchors["upf"]["ip"]]
+    multi = "one_way_targets" in settings
+    if multi:
+        inputs = [target for target in settings["one_way_targets"] if n3["enabled"] or target["role"] == "upf"]
+        points = target_points(api, inputs, "")
+    else:
+        anchors = {role: anchor(api, targets[role]) for role in ("gnb", "upf")}
+        points = ((role, targets[role] | {"role": role}, point) for role, point in anchors.items())
     sample = ["--sample", str(settings["sample"])]
-    if n3["enabled"]:
-        for role, target in anchors.items():
-            cmd = ["python3", "/app/target_process.py", target["container_id"], "/app/oneway.py",
-                   "agent", "--role", role, "--url", COLLECTOR, "--interface", target["interface"],
+    for key, target, point in points:
+        role = target["role"]
+        if multi:
+            local = {role: point["ip"]}
+            endpoints = ["--gnb", local.get("gnb", "0.0.0.0"), "--upf", local.get("upf", "0.0.0.0")]
+        else:
+            endpoints = ["--gnb", anchors["gnb"]["ip"], "--upf", anchors["upf"]["ip"]]
+        launcher = ["python3", "/app/target_process.py", point["container_id"]]
+        if n3["enabled"]:
+            cmd = [*launcher, "/app/oneway.py",
+                   "agent", "--role", role, "--url", COLLECTOR, "--interface", point["interface"],
                    "--test-port", str(settings["test_port"]), *sample, *endpoints]
-            desired[role] = pod_spec(role, settings, owner, cmd, target=target)
-    if upf["enabled"]:
-        target = anchors["upf"]
-        cmd = ["python3", "/app/target_process.py", target["container_id"], "/app/upf_transit.py",
-               "--n3", target["interface"], "--n6", targets["upf"].get("n6_interface") or target["interface"],
-               "--bind", "0.0.0.0", "--peer", upf["peer"], "--port", str(settings["test_port"]),
-               "--mapper-url", MAPPER, *sample, *endpoints]
-        desired["transit"] = pod_spec("transit", settings, owner, cmd, target=target, metrics_port=55437)
+            desired[key] = pod_spec(key, settings, owner, cmd, target=point)
+        if upf["enabled"] and role == "upf":
+            name = "transit-" + key if multi else "transit"
+            cmd = [*launcher, "/app/upf_transit.py",
+                   "--n3", point["interface"], "--n6", target.get("n6_interface") or point["interface"],
+                   "--bind", "0.0.0.0", "--peer", upf["peer"], "--port", str(settings["test_port"]),
+                   "--mapper-url", MAPPER, *sample, *endpoints]
+            desired[name] = pod_spec(name, settings, owner, cmd, target=point, metrics_port=55437)
     return desired
 
 
@@ -156,12 +209,10 @@ def external_rtt(api, settings, targets, owner, inventory, kind="rtt"):
     rows, qualify, build_map = inventory()
     rows = select_ues(qualify(rows), request)
     result = {}
-    for role, target in targets.items():
-        if kind == "throughput" and role != "upf":
-            continue
-        point = anchor(api, target)
-        if kind == "rtt" and point.get("injected_rtt_active"):
-            logging.warning("External RTT blocked by an injected probe on %s", point["pod"])
+    for key, target, point in scoped_points(api, targets, request, kind):
+        role = target["role"]
+        if point.get(f"injected_{kind}_active"):
+            logging.warning("External %s blocked by an injected probe on %s", kind, point["pod"])
             continue
         field = "gnb_n3_ip" if role == "gnb" else "upf_n3_ip"
         selected = [row for row in rows if row.get(field) == point["ip"]]
@@ -175,7 +226,6 @@ def external_rtt(api, settings, targets, owner, inventory, kind="rtt"):
             "LATENCY_MODE": target["latency_mode"], "PACKET_PAIRING": "0",
             "PRIO": "24111", "HANDLE": "27904", "EXPORTER_PORT": "9100",
         }
-        key = kind + "-" + role
         if kind == "throughput":
             env.update(NADOR_TARGET_CONTAINER=point["container_id"], HANDLE="27914", PRIO="24121",
                        EXPORTER_PORT="9300")
@@ -195,9 +245,11 @@ def external_paths(api, settings, targets, owner):
     if not request.get("allowed") or not request.get("image"):
         raise ValueError("User-plane paths require targets and a path image")
     desired = {}
-    for role, target in targets.items():
-        point = anchor(api, target)
-        key = "path-" + role
+    points = (target_points(api, request["targets"], "path") if "targets" in request else
+              (("path-" + role, target | {"role": role}, anchor(api, target))
+               for role, target in targets.items()))
+    for key, target, point in points:
+        role = target["role"]
         env = {
             "NADOR_TARGET_CONTAINER": point["container_id"],
             "USER_PLANE_PROBE_ANCHOR": role,

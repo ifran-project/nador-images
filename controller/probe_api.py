@@ -29,6 +29,10 @@ def change(settings, kind, request):
         else:
             if state["enabled"] and not settings.get("image"):
                 raise ValueError("Configure one_way.image first")
+            if kind == "n3" and state["enabled"] and "one_way_targets" in settings and not (
+                {"gnb", "upf"} <= {target["role"] for target in settings["one_way_targets"]}
+            ):
+                raise ValueError("N3 latency requires at least one gNB and one UPF target")
             if "log_samples" in request and type(request["log_samples"]) is not bool:
                 raise ValueError("log_samples must be true or false")
             if kind == "upf_transit" and state["enabled"] and (not state.get("peer") or not settings["test_port"]):
