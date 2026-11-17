@@ -8,6 +8,34 @@ from probe_control import desired_pods, external_paths, external_rtt, select_ues
 
 class ProbeControlTests(unittest.TestCase):
     @patch("probe_control.target_points")
+    def test_multi_target_rtt_scopes_to_each_anchor_and_slice(self, points):
+        points.return_value = [
+            (f"rtt-{i}", {"role": role, "container": role, "latency_mode": "BOTH"},
+             dict(ip=f"192.0.2.{i}", interface="n3", pod=f"nf{i}", node=f"node{i}", container_id=f"id{i}"))
+            for i, role in enumerate(("gnb", "gnb", "upf", "upf"), 1)
+        ]
+        rows = [
+            {"gnb_n3_ip": f"192.0.2.{g}", "upf_n3_ip": f"192.0.2.{u}", "teid_args": f"teid-{g}-{u}",
+             "imsi": f"0010100000001{g}{u}", "slice_id": f"01:00000{u}"}
+            for g in (1, 2) for u in (3, 4)
+        ]
+        inventory = lambda: (rows, lambda rows: rows, lambda rows: {r["teid_args"]:r["imsi"] for r in rows})
+        settings = {"extended": {}, "rtt": dict(enabled=True, allowed=True, image="rtt:test",
+                                               targets=[t for _, t, _ in points.return_value])}
+
+        def selected():
+            pods = external_rtt(None, settings, {}, "owner", inventory)
+            return {key: dict((e["name"], e["value"]) for e in pod["spec"]["containers"][0]["env"])["TEIDS"]
+                    for key, pod in pods.items()}
+
+        self.assertEqual(selected(), {
+            "rtt-1":"teid-1-3 teid-1-4", "rtt-2":"teid-2-3 teid-2-4",
+            "rtt-3":"teid-1-3 teid-2-3", "rtt-4":"teid-1-4 teid-2-4",
+        })
+        change(settings, "rtt", {"enabled":True, "slices":["01:000004"]})
+        self.assertEqual(selected(), {"rtt-1":"teid-1-4", "rtt-2":"teid-2-4", "rtt-4":"teid-1-4 teid-2-4"})
+
+    @patch("probe_control.target_points")
     def test_one_way_and_paths_run_once_per_anchor(self, points):
         points.return_value = [
             (f"{role}-{i}", {"role": role}, {"ip": f"192.0.2.{i}", "node": f"node{i}", "pod": f"nf{i}",
@@ -75,7 +103,7 @@ class ProbeControlTests(unittest.TestCase):
             )
 
         def target(i):
-            return {"namespace": "core", "component": f"upf-{i}", "selector": {"app": f"upf-{i}"},
+            return {"namespace": "core", "role": "upf", "component": f"upf-{i}", "selector": {"app": f"upf-{i}"},
                     "container": "upf", "interface": "eth0", "latency_mode": "CORE"}
 
         def row(i):

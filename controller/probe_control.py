@@ -83,15 +83,6 @@ def anchor(api, target):
     return resolve_anchor(target, *ready[0])
 
 
-def throughput_anchors(api, targets, request):
-    if "targets" not in request:
-        if "upf" in targets:
-            target = targets["upf"]
-            yield "throughput-upf", target, anchor(api, target)
-        return
-    yield from target_points(api, request["targets"], "throughput-upf")
-
-
 def target_points(api, targets, prefix):
     seen = set()
     for target in targets:
@@ -107,6 +98,17 @@ def target_points(api, targets, prefix):
             seen.add(identity)
             suffix = hashlib.sha256("/".join(identity).encode()).hexdigest()[:16]
             yield f"{prefix or target['role']}-{suffix}", target, point
+
+
+def scoped_points(api, targets, request, kind):
+    if "targets" in request:
+        selected = [t for t in request["targets"] if kind != "throughput" or t["role"] == "upf"]
+        prefix = "throughput-upf" if kind == "throughput" else "rtt"
+        yield from target_points(api, selected, prefix)
+    else:
+        for role, target in targets.items():
+            if kind != "throughput" or role == "upf":
+                yield f"{kind}-{role}", target | {"role": role}, anchor(api, target)
 
 
 def pod_spec(role, settings, owner_uid, command, *, target=None, metrics_port=None, env=None, path="/metrics"):
@@ -207,12 +209,8 @@ def external_rtt(api, settings, targets, owner, inventory, kind="rtt"):
     rows, qualify, build_map = inventory()
     rows = select_ues(qualify(rows), request)
     result = {}
-    points = (
-        (("upf", key, target, point) for key, target, point in throughput_anchors(api, targets, request))
-        if kind == "throughput" else
-        ((role, "rtt-" + role, target, anchor(api, target)) for role, target in targets.items())
-    )
-    for role, key, target, point in points:
+    for key, target, point in scoped_points(api, targets, request, kind):
+        role = target["role"]
         if point.get(f"injected_{kind}_active"):
             logging.warning("External %s blocked by an injected probe on %s", kind, point["pod"])
             continue
