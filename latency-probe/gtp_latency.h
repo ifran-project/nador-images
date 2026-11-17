@@ -41,7 +41,12 @@ struct latency_config_t {
     __u8 mode;
     __u8 debug;
     __u8 role;
-    __u8 reserved;
+    __u8 filter_tunnels;
+};
+
+struct latency_tunnel_key {
+    __be32 outer_dst_ip;
+    __u32 teid;
 };
 
 enum icmp_debug_action_t {
@@ -114,6 +119,7 @@ enum tcp_observation_type_t {
     TCP_OBS_CORE_ACK  = 2,
     TCP_OBS_RAN_DATA  = 3,
     TCP_OBS_RAN_ACK   = 4,
+    TCP_OBS_RESET     = 5,
 };
 
 struct tcp_observation_event_t {
