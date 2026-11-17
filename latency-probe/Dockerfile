@@ -27,7 +27,7 @@ COPY --from=build /app/gtp_latency_user ./
 COPY latency-probe/exporter.py latency-probe/latency_socket_server.py \
      latency-probe/entrypoint-latency.sh ./
 COPY common/tunnel_identity.py ./
-COPY latency-probe/external-rtt.sh n3-oneway/target_process.py ./
+COPY latency-probe/external-rtt.sh common/target_process.py ./
 RUN chmod +x entrypoint-latency.sh
 
 EXPOSE 9100

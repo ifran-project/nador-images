@@ -12,6 +12,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 util-li
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /build/nador-n3-observer /usr/local/bin/
-COPY n3-oneway/oneway.py n3-oneway/upf_transit.py n3-oneway/target_process.py ./
+COPY n3-oneway/oneway.py n3-oneway/upf_transit.py common/target_process.py ./
 ENV PYTHONUNBUFFERED=1
 ENTRYPOINT ["python3", "/app/oneway.py"]

@@ -1,16 +1,7 @@
 {
-  "controller": {
-    "dockerfile": "controller/Dockerfile",
-    "context": ".",
-    "platform": "linux/amd64",
-    "current_version": "2026w45",
-    "version_record": "versions/controller/2026w45.json",
-    "ghcr_image": "ghcr.io/ifran-project/kopf-controller:2026w45",
-    "monitoring_target": "components.monitoring-controller"
-  },
   "external-controller": {
     "source_dir": "controller",
-    "dockerfile": "controller/Dockerfile.external",
+    "dockerfile": "controller/Dockerfile",
     "context": ".",
     "platform": "linux/amd64",
     "current_version": "multi-upf",
@@ -31,10 +22,19 @@
     "dockerfile": "throughput-probe/Dockerfile",
     "context": ".",
     "platform": "linux/amd64",
-    "current_version": "2026w44",
-    "version_record": "versions/throughput-probe/2026w44.json",
-    "ghcr_image": "ghcr.io/ifran-project/ebpf-throughput-probe:2026w44",
-    "monitoring_target": "probes.throughput"
+    "current_version": "external",
+    "version_record": "versions/throughput-probe/external.json",
+    "ghcr_image": "ghcr.io/ifran-project/nador-throughput-probe:external",
+    "monitoring_target": "external_probes.throughput"
+  },
+  "user-plane-path": {
+    "dockerfile": "user-plane-path/Dockerfile",
+    "context": ".",
+    "platform": "linux/amd64",
+    "current_version": "external",
+    "version_record": "versions/user-plane-path/external.json",
+    "ghcr_image": "ghcr.io/ifran-project/nador-user-plane-path:external",
+    "monitoring_target": "external_probes.user_plane_paths"
   },
   "latency-probe": {
     "dockerfile": "latency-probe/Dockerfile",

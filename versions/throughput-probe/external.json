@@ -1,0 +1,15 @@
+{
+  "image": "ghcr.io/ifran-project/nador-throughput-probe:external",
+  "changes": "Build the external throughput image with the existing endpoint-scoped counters and target namespace helper.",
+  "source_files_sha256": {
+    "throughput-probe/Dockerfile": "94d0edf08319ab2f52e68415a47c0923e18654b64d259081db4802fdee03f4ea",
+    "throughput-probe/Makefile": "1e3f73f1bbc9e140db454c2b425ed3a9cbd4e5dadb67b4d10488daab2dbca3dc",
+    "throughput-probe/entrypoint-throughput.sh": "e7e773ad391037cd7925d610e5f6b3550773189c8cb9032a8ce4fdee4f8e85a3",
+    "throughput-probe/exporter.py": "ba764eb60d6b6dd0dbef7551ece1d4bd98db13b66c10d5f3d15416d49ad98b48",
+    "throughput-probe/gtp_packet.h": "146f87546ad5dec6d6990105537ddc5bbc4632e0867bada4ed83ba00eba2d1fd",
+    "throughput-probe/gtp_throughput.bpf.c": "7d6e05d2566d7d06eefe7c2f6d9ca79f74dfec690c7f4b7f4fc53bc7279a8210",
+    "throughput-probe/gtp_throughput_user.c": "41915f31aac1aa2613d41612fd31da6728c0fe78ba846424ee06ed0b6e9e1d68",
+    "common/target_process.py": "fd1a0a89896cac723a4c6bff4c144504c4ad2d870a29e7f53b6b796ddf4447fc",
+    "common/tunnel_identity.py": "bcc961a9fd6e89e8705c67bad5905ec62404e26ec85d053045150a520857d1ef"
+  }
+}

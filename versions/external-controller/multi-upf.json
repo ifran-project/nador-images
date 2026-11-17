@@ -1,10 +1,10 @@
 {
   "image": "ghcr.io/ifran-project/nador-controller:multi-upf",
-  "changes": "Reconcile external RTT, throughput, path counters and one-way workloads across multiple RAN and core targets.",
+  "changes": "Reconcile external RTT, same-packet RTT pairing, throughput, path counters and one-way workloads across multiple targets.",
   "source_files_sha256": {
-    "controller/Dockerfile.external": "8eccdec4b0999dad261551522b2746f75c9de7dd3068e368c6e8a35091fd62ed",
+    "controller/Dockerfile": "8eccdec4b0999dad261551522b2746f75c9de7dd3068e368c6e8a35091fd62ed",
     "controller/external_controller.py": "ddc3a7e94ace119fc312bfae7b01c61a83011a995c64355a86bf4f6be37d38db",
-    "controller/probe_control.py": "9852ddbc765bdb73c02da98812135554109ca50843547bd60b70de214d23193d",
+    "controller/probe_control.py": "82192feef2f7c995461fcff937891df506912e145c81dfb2677cfbd3f06cf65f",
     "controller/probe_api.py": "8953c555a035e16e25c894ea16e21645d12d78f6c7a47d08443f3c8562759839",
     "controller/ue_inventory.py": "f0bf303ea0cdb440b6d72b4dbc03a4f2c7e06f5ceed19c1714e65d01106178f8",
     "common/tunnel_identity.py": "bcc961a9fd6e89e8705c67bad5905ec62404e26ec85d053045150a520857d1ef"
