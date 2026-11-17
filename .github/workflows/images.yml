@@ -55,6 +55,9 @@ jobs:
       - name: Check external controller reconciliation
         if: matrix.component == 'external-controller'
         run: PYTHONPATH=controller:common python3 -m unittest discover -s controller
+      - name: Check one-way link and transit matching
+        if: matrix.component == 'n3-oneway'
+        run: PYTHONPATH=n3-oneway python3 -m unittest discover -s n3-oneway
       - name: Build image
         run: |
           docker build --pull --platform "$PLATFORM" \

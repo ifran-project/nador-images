@@ -3,10 +3,40 @@ from types import SimpleNamespace as NS
 from unittest.mock import patch
 
 from probe_api import change
-from probe_control import external_rtt, select_ues
+from probe_control import desired_pods, external_paths, external_rtt, select_ues
 
 
 class ProbeControlTests(unittest.TestCase):
+    @patch("probe_control.target_points")
+    def test_one_way_and_paths_run_once_per_anchor(self, points):
+        points.return_value = [
+            (f"{role}-{i}", {"role": role}, {"ip": f"192.0.2.{i}", "node": f"node{i}", "pod": f"nf{i}",
+                                             "container_id": f"id{i}", "interface": "n3"})
+            for i, role in enumerate(("gnb", "gnb", "upf", "upf"), 1)
+        ]
+        targets = [target for _, target, _ in points.return_value]
+        settings = {"n3": {"enabled": True, "log_samples": False},
+                    "upf_transit": {"enabled": True, "peer": "198.51.100.1"}, "test_port": 5201,
+                    "sample": 16, "image": "oneway:test", "one_way_targets": targets, "extended": {}}
+        desired = desired_pods(None, settings, {}, "owner")
+        self.assertEqual(set(desired), {"collector", "gnb-1", "gnb-2", "upf-3", "upf-4", "transit-upf-3", "transit-upf-4"})
+        for key in ("gnb-2", "upf-4", "transit-upf-3"):
+            command = desired[key]["spec"]["containers"][0]["command"]
+            gnb = command[command.index("--gnb") + 1]
+            upf = command[command.index("--upf") + 1]
+            self.assertEqual(gnb, "192.0.2.2" if key == "gnb-2" else "0.0.0.0")
+            self.assertEqual(upf, "0.0.0.0" if key == "gnb-2" else f"192.0.2.{key[-1]}")
+        paths = external_paths(None, {"user_plane_paths": dict(enabled=True, allowed=True, image="paths:test",
+                                                              targets=targets, port=9403, interval=5)}, {}, "owner")
+        self.assertEqual({p["metadata"]["labels"]["nador-target-pod"] for p in paths.values()},
+                         {"nf1", "nf2", "nf3", "nf4"})
+        settings["one_way_targets"] = targets[2:]
+        points.return_value = points.return_value[2:]
+        change(settings, "n3", {"enabled": False})
+        self.assertEqual(set(desired_pods(None, settings, {}, "owner")), {"transit-upf-3", "transit-upf-4"})
+        with self.assertRaisesRegex(ValueError, "at least one gNB"):
+            change(settings, "n3", {"enabled": True})
+
     def test_scope_is_intersection(self):
         rows = [{"imsi": "001010000000100", "slice_id": "01:ffffff"},
                 {"imsi": "001010000000101", "slice_id": "02:000001"}]
