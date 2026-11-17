@@ -18,7 +18,7 @@ def apply_records(manifest: dict, records: list[dict], images: dict) -> str:
         reference = images[component]["ghcr_image"].rsplit(":", 1)[0] + ":sha-" + sha
         if reference not in record["tags"]:
             raise ValueError(f"Missing commit-tagged publication for {component}")
-        if group == "probes":
+        if group in ("probes", "external_probes"):
             manifest[group][key] = reference
         else:
             repository, tag = reference.rsplit(":", 1)

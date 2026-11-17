@@ -16,7 +16,7 @@ def select_components(images: dict, changed: list[str] | None) -> list[dict]:
         {"component": name, **config}
         for name, config in images.items()
         if all_images
-        or any(path.startswith(name + "/") for path in changed)
+        or any(path.startswith(config.get("source_dir", name) + "/") for path in changed)
         or (config["context"] == "." and any(path.startswith("common/") for path in changed))
     ]
 

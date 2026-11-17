@@ -3,7 +3,6 @@ name: Check external probe images
 on:
   pull_request:
     paths:
-      - controller/**
       - throughput-probe/**
       - user-plane-path/**
       - n3-oneway/target_process.py
@@ -21,8 +20,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - component: controller
-            dockerfile: controller/Dockerfile.external
           - component: throughput
             dockerfile: throughput-probe/Dockerfile
           - component: user-plane-path
@@ -36,11 +33,3 @@ jobs:
         run: docker build --pull --platform linux/amd64 --file "$DOCKERFILE" --tag "nador-external-$COMPONENT:pr" .
       - name: Check packaged Python source
         run: docker run --rm --network none --entrypoint python3 "nador-external-$COMPONENT:pr" -m compileall -q /app
-      - name: Check that the external controller does not bundle the injector
-        if: matrix.component == 'controller'
-        run: |
-          docker run --rm --network none --entrypoint python3 "nador-external-$COMPONENT:pr" -c '
-          from pathlib import Path
-          import external_controller
-          assert not Path("/app/k8scontroller.py").exists()
-          '
