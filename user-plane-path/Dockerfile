@@ -6,5 +6,5 @@ LABEL org.opencontainers.image.version="2026w45-ml" \
 RUN pip install --no-cache-dir 'prometheus-client>=0.20,<1'
 WORKDIR /app
 COPY user-plane-path/probe.py /app/probe.py
-COPY n3-oneway/target_process.py /app/
+COPY common/target_process.py /app/
 CMD ["python", "/app/probe.py"]

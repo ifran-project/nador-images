@@ -1,4 +1,4 @@
-"""Reconcile disposable one-way probe pods from the monitoring ConfigMap."""
+"""Reconcile external probe pods from the monitoring ConfigMap."""
 import hashlib
 import ipaddress
 import json
@@ -86,6 +86,7 @@ def anchor(api, target):
 
 
 def target_points(api, targets, prefix):
+    """Yield one ready anchor per pod, even when selectors overlap."""
     seen = set()
     for target in targets:
         for pod, status in ready_containers(api, target):
@@ -103,6 +104,7 @@ def target_points(api, targets, prefix):
 
 
 def scoped_points(api, targets, request, kind):
+    """Accept both multi-target requests and older single-anchor profiles."""
     if "targets" in request:
         selected = [t for t in request["targets"] if kind != "throughput" or t["role"] == "upf"]
         prefix = "throughput-upf" if kind == "throughput" else "rtt"
@@ -202,7 +204,8 @@ def select_ues(rows, request):
             if (not imsis or row.get("imsi") in imsis) and (not slices or row.get("slice_id") in slices)]
 
 
-def external_rtt(api, settings, targets, owner, inventory, kind="rtt"):
+def scoped_probe_pods(api, settings, targets, owner, inventory, kind="rtt"):
+    """Build RTT or throughput probes using only sessions on each target."""
     request = settings.get(kind, {})
     if not request.get("enabled"):
         return {}
@@ -281,8 +284,8 @@ def reconcile(api, namespace, inventory=None):
     desired = {}
     preserve = set()
     for kind, build in (("one-way", lambda: desired_pods(api, settings, targets, cm.metadata.uid)),
-                        ("rtt", lambda: external_rtt(api, settings, targets, cm.metadata.uid, inventory)),
-                        ("throughput", lambda: external_rtt(api, settings, targets, cm.metadata.uid, inventory, "throughput")),
+                        ("rtt", lambda: scoped_probe_pods(api, settings, targets, cm.metadata.uid, inventory)),
+                        ("throughput", lambda: scoped_probe_pods(api, settings, targets, cm.metadata.uid, inventory, "throughput")),
                         ("path", lambda: external_paths(api, settings, targets, cm.metadata.uid))):
         try:
             desired.update(build())

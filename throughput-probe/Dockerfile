@@ -10,6 +10,6 @@ WORKDIR /app
 COPY --from=build /app/gtp_throughput_user ./
 COPY throughput-probe/exporter.py throughput-probe/entrypoint-throughput.sh ./
 COPY common/tunnel_identity.py ./
-COPY n3-oneway/target_process.py ./
+COPY common/target_process.py ./
 RUN chmod +x entrypoint-throughput.sh
 CMD ["./entrypoint-throughput.sh"]

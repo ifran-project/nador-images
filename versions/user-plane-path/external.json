@@ -1,0 +1,9 @@
+{
+  "image": "ghcr.io/ifran-project/nador-user-plane-path:external",
+  "changes": "Publish the existing external interface and GTP-U path observer through the standard image workflow.",
+  "source_files_sha256": {
+    "user-plane-path/Dockerfile": "1f1d2fd053b5c855362ae587ae61f55858d98d26411dac5ad4d0a0a980b7d43a",
+    "user-plane-path/probe.py": "e7754656279659421082ed1535df5c1d77d4ed301f0b2a6e784385a23d71a529",
+    "common/target_process.py": "fd1a0a89896cac723a4c6bff4c144504c4ad2d870a29e7f53b6b796ddf4447fc"
+  }
+}

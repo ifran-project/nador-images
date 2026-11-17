@@ -4,7 +4,7 @@ from types import SimpleNamespace as NS
 from unittest.mock import patch
 
 from probe_api import change
-from probe_control import desired_pods, external_paths, external_rtt, select_ues
+from probe_control import desired_pods, external_paths, scoped_probe_pods, select_ues
 
 
 class ProbeControlTests(unittest.TestCase):
@@ -25,7 +25,7 @@ class ProbeControlTests(unittest.TestCase):
                                                targets=[t for _, t, _ in points.return_value])}
 
         def selected():
-            pods = external_rtt(None, settings, {}, "owner", inventory)
+            pods = scoped_probe_pods(None, settings, {}, "owner", inventory)
             return {key: dict((e["name"], e["value"]) for e in pod["spec"]["containers"][0]["env"])["TEIDS"]
                     for key, pod in pods.items()}
 
@@ -35,10 +35,10 @@ class ProbeControlTests(unittest.TestCase):
         })
         change(settings, "rtt", {"enabled":True, "slices":["01:000004"]})
         self.assertEqual(selected(), {"rtt-1":"teid-1-4", "rtt-2":"teid-2-4", "rtt-4":"teid-1-4 teid-2-4"})
-        self.assertNotIn("rtt-pairer", external_rtt(None, settings, {}, "owner", inventory))
+        self.assertNotIn("rtt-pairer", scoped_probe_pods(None, settings, {}, "owner", inventory))
 
         settings["rtt"]["pairer_image"] = "pairer:test"
-        pods = external_rtt(None, settings, {}, "owner", inventory)
+        pods = scoped_probe_pods(None, settings, {}, "owner", inventory)
         pairer = pods.pop("rtt-pairer")
         container, = pairer["spec"]["containers"]
         self.assertEqual(container["image"], "pairer:test")
@@ -51,7 +51,7 @@ class ProbeControlTests(unittest.TestCase):
             self.assertEqual(env["PACKET_PAIRER_HOST"], "packet-pairer")
             self.assertEqual(env["PACKET_PAIRER_PORT"], "9201")
         change(settings, "rtt", {"enabled": False})
-        self.assertEqual(external_rtt(None, settings, {}, "owner", inventory), {})
+        self.assertEqual(scoped_probe_pods(None, settings, {}, "owner", inventory), {})
 
     @patch("probe_control.target_points")
     def test_one_way_and_paths_run_once_per_anchor(self, points):
@@ -99,17 +99,17 @@ class ProbeControlTests(unittest.TestCase):
         targets = {"upf": {"container": "upf", "latency_mode": "CORE"}}
         inventory = lambda: ([row, row | {"imsi": "001010000000101", "teid_args": "0x33:0x44"}],
                              lambda rows: rows, lambda rows: {})
-        pod = external_rtt(None, settings, targets, "owner", inventory)["rtt-upf"]
+        pod = scoped_probe_pods(None, settings, targets, "owner", inventory)["rtt-upf"]
         self.assertTrue(pod["spec"]["hostPID"])
         self.assertNotIn("hostNetwork", pod["spec"])
         self.assertEqual(pod["metadata"]["annotations"]["prometheus.io/path"], "/latency")
         self.assertIn({"name": "TEIDS", "value": "0x11:0x22"}, pod["spec"]["containers"][0]["env"])
         with self.assertLogs(level="WARNING"):
             anchor.return_value["injected_rtt_active"] = True
-            self.assertFalse(external_rtt(None, settings, targets, "owner", inventory))
+            self.assertFalse(scoped_probe_pods(None, settings, targets, "owner", inventory))
         anchor.return_value.pop("injected_rtt_active")
         settings["rtt"]["imsis"] = ["001010000000102"]
-        self.assertFalse(external_rtt(None, settings, targets, "owner", inventory))
+        self.assertFalse(scoped_probe_pods(None, settings, targets, "owner", inventory))
 
     def test_throughput_reconciles_each_ready_upf_without_mixing_sessions(self):
         def pod(i, *, ready=True, injected=False):
@@ -137,7 +137,7 @@ class ProbeControlTests(unittest.TestCase):
         inventory = lambda: (rows, lambda rows: rows, lambda rows: {r["upf_n3_ip"]: r["imsi"] for r in rows})
 
         def desired():
-            return external_rtt(api, settings, {}, "owner", inventory, "throughput")
+            return scoped_probe_pods(api, settings, {}, "owner", inventory, "throughput")
 
         all_probes = desired()
         self.assertEqual(len(all_probes), 2)
