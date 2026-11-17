@@ -9,6 +9,8 @@ import re
 SELECTOR = "nador-one-way-managed=true"
 MAPPER = "http://ue-mapper-api:8080"
 COLLECTOR = "http://nador-one-way-collector:55393"
+PACKET_PAIRER_HOST = "packet-pairer"
+PACKET_PAIRER_PORT = "9201"
 EXTENDED_PROBES = ("cpu", "drops", "queueing", "tcp", "split-signaling", "measurement-quality")
 PAUSED_SELECTOR = "monitoring.blueprint/probe-paused"
 
@@ -209,6 +211,13 @@ def external_rtt(api, settings, targets, owner, inventory, kind="rtt"):
     rows, qualify, build_map = inventory()
     rows = select_ues(qualify(rows), request)
     result = {}
+    pairer_image = request.get("pairer_image") if kind == "rtt" else None
+    if pairer_image:
+        result["rtt-pairer"] = pod_spec(
+            "rtt-pairer", settings | {"image": pairer_image}, owner,
+            ["/app/entrypoint-same-packet-pairer.sh"], metrics_port=9200,
+            env={"TEID_UE_MAP": json.dumps(build_map(rows), sort_keys=True)},
+        )
     for key, target, point in scoped_points(api, targets, request, kind):
         role = target["role"]
         if point.get(f"injected_{kind}_active"):
@@ -223,7 +232,7 @@ def external_rtt(api, settings, targets, owner, inventory, kind="rtt"):
             "TEIDS": " ".join(args), "TEID_UE_MAP": json.dumps(build_map(selected), sort_keys=True),
             "IFACE": point["interface"], "PROBE_ROLE": role, "PROBE_POD": point["pod"],
             "PROBE_NODE": point["node"], "PROBE_TARGET": target["container"],
-            "LATENCY_MODE": target["latency_mode"], "PACKET_PAIRING": "0",
+            "LATENCY_MODE": target["latency_mode"], "PACKET_PAIRING": "1" if pairer_image else "0",
             "PRIO": "24111", "HANDLE": "27904", "EXPORTER_PORT": "9100",
         }
         if kind == "throughput":
@@ -232,6 +241,8 @@ def external_rtt(api, settings, targets, owner, inventory, kind="rtt"):
             result[key] = pod_spec(key, settings | {"image": request["image"]}, owner,
                                    ["python3", "/app/exporter.py"], target=point, metrics_port=9300, env=env)
             continue
+        if pairer_image:
+            env.update(PACKET_PAIRER_HOST=PACKET_PAIRER_HOST, PACKET_PAIRER_PORT=PACKET_PAIRER_PORT)
         result[key] = pod_spec(key, settings | {"image": request["image"]}, owner,
                                ["bash", "/app/external-rtt.sh", point["container_id"]],
                                target=point, metrics_port=9100, env=env, path="/latency")

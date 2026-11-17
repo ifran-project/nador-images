@@ -1,3 +1,4 @@
+import json
 import unittest
 from types import SimpleNamespace as NS
 from unittest.mock import patch
@@ -34,6 +35,23 @@ class ProbeControlTests(unittest.TestCase):
         })
         change(settings, "rtt", {"enabled":True, "slices":["01:000004"]})
         self.assertEqual(selected(), {"rtt-1":"teid-1-4", "rtt-2":"teid-2-4", "rtt-4":"teid-1-4 teid-2-4"})
+        self.assertNotIn("rtt-pairer", external_rtt(None, settings, {}, "owner", inventory))
+
+        settings["rtt"]["pairer_image"] = "pairer:test"
+        pods = external_rtt(None, settings, {}, "owner", inventory)
+        pairer = pods.pop("rtt-pairer")
+        container, = pairer["spec"]["containers"]
+        self.assertEqual(container["image"], "pairer:test")
+        self.assertEqual(set(json.loads(container["env"][0]["value"])), {"teid-1-4", "teid-2-4"})
+        self.assertEqual(pairer["metadata"]["annotations"]["prometheus.io/port"], "9200")
+        self.assertEqual(set(pods), {"rtt-1", "rtt-2", "rtt-4"})
+        for pod in pods.values():
+            env = {entry["name"]: entry["value"] for entry in pod["spec"]["containers"][0]["env"]}
+            self.assertEqual(env["PACKET_PAIRING"], "1")
+            self.assertEqual(env["PACKET_PAIRER_HOST"], "packet-pairer")
+            self.assertEqual(env["PACKET_PAIRER_PORT"], "9201")
+        change(settings, "rtt", {"enabled": False})
+        self.assertEqual(external_rtt(None, settings, {}, "owner", inventory), {})
 
     @patch("probe_control.target_points")
     def test_one_way_and_paths_run_once_per_anchor(self, points):
