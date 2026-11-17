@@ -20,7 +20,7 @@ docker build --platform linux/amd64 -f latency-probe/Dockerfile -t nador-latency
 
 The standard workflow builds changed components on pull requests and publishes successful `main` builds to [GHCR](https://github.com/orgs/ifran-project/packages). Use a `sha-<commit>` tag or a digest to select an exact image. The OAI gNB metrics parser has its own workflow.
 
-The legacy injector and standalone throughput images are no longer rebuilt. Existing tags are retained for older deployments.
+The legacy injector and standalone throughput images are retired. Current Nador deployments use the external controller and throughput probe.
 
 Build checks do not replace live network validation. The external controller and probes were tested on single-gNB OAI RFsim and OCUDU ZMQ using the image versions pinned by NADOR.
 
