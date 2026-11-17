@@ -41,18 +41,18 @@ def reconcile_extended(core, apps, namespace):
             logging.exception("Could not reconcile %s", kind)
 
 
-def anchor(api, target):
+def ready_containers(api, target):
     selector = ",".join(f"{k}={v}" for k, v in target["selector"].items())
     pods = api.list_namespaced_pod(target["namespace"], label_selector=selector).items
-    ready = [
+    return [
         (pod, status)
         for pod in pods if not pod.metadata.deletion_timestamp and pod.spec.node_name
         for status in pod.status.container_statuses or []
         if status.name == target["container"] and status.ready and status.container_id
     ]
-    if len(ready) != 1:
-        raise ValueError(f'{target["component"]}: expected one ready target, found {len(ready)}')
-    pod, status = ready[0]
+
+
+def resolve_anchor(target, pod, status):
     interface = target.get("n3_interface") or target["interface"]
     networks = json.loads((pod.metadata.annotations or {}).get("k8s.v1.cni.cncf.io/network-status", "[]"))
     ips = [ip for item in networks if item.get("interface") == interface for ip in item.get("ips", [])]
@@ -70,7 +70,39 @@ def anchor(api, target):
             or any(env.name == "LATENCY_MODE" for env in (container.env or [])))
            for container in (pod.spec.ephemeral_containers or [])):
         point["injected_rtt_active"] = True
+    if any(container.name not in terminated and container.name.startswith("throughput-probe")
+           for container in (pod.spec.ephemeral_containers or [])):
+        point["injected_throughput_active"] = True
     return point
+
+
+def anchor(api, target):
+    ready = ready_containers(api, target)
+    if len(ready) != 1:
+        raise ValueError(f'{target["component"]}: expected one ready target, found {len(ready)}')
+    return resolve_anchor(target, *ready[0])
+
+
+def throughput_anchors(api, targets, request):
+    if "targets" not in request:
+        if "upf" in targets:
+            target = targets["upf"]
+            yield "throughput-upf", target, anchor(api, target)
+        return
+    seen = set()
+    for target in request["targets"]:
+        for pod, status in ready_containers(api, target):
+            identity = target["namespace"], pod.metadata.name
+            if identity in seen:
+                continue
+            try:
+                point = resolve_anchor(target, pod, status)
+            except ValueError as exc:
+                logging.warning("Throughput target %s/%s: %s", *identity, exc)
+                continue
+            seen.add(identity)
+            suffix = hashlib.sha256("/".join(identity).encode()).hexdigest()[:16]
+            yield f"throughput-upf-{suffix}", target, point
 
 
 def pod_spec(role, settings, owner_uid, command, *, target=None, metrics_port=None, env=None, path="/metrics"):
@@ -156,12 +188,14 @@ def external_rtt(api, settings, targets, owner, inventory, kind="rtt"):
     rows, qualify, build_map = inventory()
     rows = select_ues(qualify(rows), request)
     result = {}
-    for role, target in targets.items():
-        if kind == "throughput" and role != "upf":
-            continue
-        point = anchor(api, target)
-        if kind == "rtt" and point.get("injected_rtt_active"):
-            logging.warning("External RTT blocked by an injected probe on %s", point["pod"])
+    points = (
+        (("upf", key, target, point) for key, target, point in throughput_anchors(api, targets, request))
+        if kind == "throughput" else
+        ((role, "rtt-" + role, target, anchor(api, target)) for role, target in targets.items())
+    )
+    for role, key, target, point in points:
+        if point.get(f"injected_{kind}_active"):
+            logging.warning("External %s blocked by an injected probe on %s", kind, point["pod"])
             continue
         field = "gnb_n3_ip" if role == "gnb" else "upf_n3_ip"
         selected = [row for row in rows if row.get(field) == point["ip"]]
@@ -175,7 +209,6 @@ def external_rtt(api, settings, targets, owner, inventory, kind="rtt"):
             "LATENCY_MODE": target["latency_mode"], "PACKET_PAIRING": "0",
             "PRIO": "24111", "HANDLE": "27904", "EXPORTER_PORT": "9100",
         }
-        key = kind + "-" + role
         if kind == "throughput":
             env.update(NADOR_TARGET_CONTAINER=point["container_id"], HANDLE="27914", PRIO="24121",
                        EXPORTER_PORT="9300")
