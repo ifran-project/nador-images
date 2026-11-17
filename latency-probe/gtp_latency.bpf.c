@@ -85,6 +85,13 @@ struct {
 } tracked_teids SEC(".maps");
 
 struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __type(key, struct latency_tunnel_key);
+    __type(value, __u8);
+    __uint(max_entries, 4096);
+} allowed_latency_tunnels SEC(".maps");
+
+struct {
     __uint(type, BPF_MAP_TYPE_PERF_EVENT_ARRAY);
     __uint(key_size, sizeof(__u32));
     __uint(value_size, sizeof(__u32));
@@ -272,7 +279,17 @@ static __always_inline void emit_icmp_debug_event(
     bpf_perf_event_output(skb, &icmp_debug_events, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
 }
 
-static __noinline int is_gtp_packet(struct __sk_buff *skb) {
+static __always_inline int latency_tunnel_allowed(__be32 outer_dst_ip, __u32 teid)
+{
+    __u32 index = 0;
+    struct latency_config_t *config = bpf_map_lookup_elem(&latency_config_map, &index);
+    if (!config || !config->filter_tunnels)
+        return 1;
+    struct latency_tunnel_key key = {outer_dst_ip, teid};
+    return bpf_map_lookup_elem(&allowed_latency_tunnels, &key) != 0;
+}
+
+static __noinline int is_gtp_packet(struct __sk_buff *skb, __be32 *outer_dst_ip) {
     struct ethhdr eth;
     struct iphdr iph;
     struct udphdr udp;
@@ -296,6 +313,7 @@ static __noinline int is_gtp_packet(struct __sk_buff *skb) {
     __u16 dport = bpf_ntohs(udp.dest);
     __u16 sport = bpf_ntohs(udp.source);
 
+    *outer_dst_ip = iph.daddr;
     return dport == GTP_PORT || sport == GTP_PORT;
 }
 
@@ -478,6 +496,13 @@ static __noinline void parse_inner_ipv4_flow(
                 seq_advance += 1;
             if (tcp_hdr.flags & 0x01) // FIN consumes one TCP sequence number.
                 seq_advance += 1;
+
+            __u8 data_mode = logical_uplink ? LATENCY_MODE_CORE : LATENCY_MODE_RAN;
+            if ((tcp_hdr.flags & 0x04) && mode_enabled(configured_mode, data_mode))
+                emit_tcp_observation_event(
+                    skb, teid, inner_iph.saddr, inner_iph.daddr,
+                    evt.src_port, evt.dst_port, seq, ack_seq, seq_advance,
+                    payload_len_u32, direction, data_mode, tcp_hdr.flags, TCP_OBS_RESET);
 
             if (mode_enabled(configured_mode, LATENCY_MODE_CORE)) {
                 if (logical_uplink && ack_flag && seq_advance > 0) {
@@ -726,7 +751,8 @@ static __noinline void parse_inner_ipv4_flow(
 
 SEC("tc")
 int tc_gtp_teid_ingress(struct __sk_buff *skb) {
-    if (!is_gtp_packet(skb))
+    __be32 outer_dst_ip = 0;
+    if (!is_gtp_packet(skb, &outer_dst_ip))
         return TC_ACT_PIPE;
 
     __u32 teid = 0;
@@ -745,6 +771,9 @@ int tc_gtp_teid_ingress(struct __sk_buff *skb) {
         return TC_ACT_PIPE;
     }
 
+    if (!latency_tunnel_allowed(outer_dst_ip, teid))
+        return TC_ACT_PIPE;
+
     // ZERO-INIT FIX HERE
     struct teid_event_t evt = {};
     evt.teid = teid;
@@ -757,7 +786,8 @@ int tc_gtp_teid_ingress(struct __sk_buff *skb) {
 
 SEC("tc")
 int tc_gtp_teid_egress(struct __sk_buff *skb) {
-    if (!is_gtp_packet(skb))
+    __be32 outer_dst_ip = 0;
+    if (!is_gtp_packet(skb, &outer_dst_ip))
         return TC_ACT_PIPE;
 
     __u32 teid = 0;
@@ -775,6 +805,9 @@ int tc_gtp_teid_egress(struct __sk_buff *skb) {
         bpf_perf_event_output(skb, &flow_events, BPF_F_CURRENT_CPU, &failed_evt, sizeof(failed_evt));
         return TC_ACT_PIPE;
     }
+
+    if (!latency_tunnel_allowed(outer_dst_ip, teid))
+        return TC_ACT_PIPE;
 
     // ZERO-INIT FIX HERE
     struct teid_event_t evt = {};

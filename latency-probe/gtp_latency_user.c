@@ -7,6 +7,8 @@
 #include <netdb.h>
 #include <net/if.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
+#include <stdint.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <time.h>
@@ -18,6 +20,8 @@
 
 #include "gtp_latency.skel.h"
 #include "gtp_latency.h"
+#include "tcp_repeat.h"
+#include "tcp_rtt_variation.h"
 
 static volatile sig_atomic_t exiting = 0;
 
@@ -68,6 +72,7 @@ struct tcp_corr_sample_t {
     __u16 dst_port;
     __u8 flags;
     __u8 active;
+    __u8 repeated;
 };
 
 struct tcp_corr_flow_t {
@@ -75,10 +80,12 @@ struct tcp_corr_flow_t {
     struct tcp_corr_key_t key;
     __u64 last_seen_ns;
     __u32 next_slot;
+    struct tcp_rtt_variation_state rtt_variation;
     struct tcp_corr_sample_t samples[TCP_CORR_WINDOW];
 };
 
 static struct tcp_corr_flow_t tcp_corr_flows[TCP_CORR_MAX_FLOWS];
+static struct tcp_repeat_entry tcp_repeat_table[TCP_REPEAT_SLOTS];
 static __u64 tcp_corr_last_flush_ns = 0;
 
 struct tcp_corr_metric_totals_t {
@@ -88,6 +95,7 @@ struct tcp_corr_metric_totals_t {
     __u64 pending_evicted_overwrite;
     __u64 pending_evicted_ttl;
     __u64 pending_evicted_flow_reuse;
+    __u64 repeat_history_evicted;
     __u64 ack_no_match;
 };
 
@@ -544,6 +552,34 @@ static void emit_latency_json(__u32 teid, __u8 mode, __u8 kind, __u64 latency_ns
     json_object_put(root);
 }
 
+static void emit_tcp_path_signal(const struct tcp_observation_event_t *evt, const char *signal) {
+    json_object *root = json_object_new_object();
+    char endpoint[16];
+    format_ipv4(evt->outer_dst_ip, endpoint, sizeof(endpoint));
+    json_object_object_add(root, "event_type", json_object_new_string("tcp_path_signal"));
+    json_object_object_add(root, "outer_dst_ip", json_object_new_string(endpoint));
+    json_object_object_add(root, "signal", json_object_new_string(signal));
+    json_object_object_add(root, "direction", json_object_new_string(
+        evt->mode == LATENCY_MODE_CORE ? "uplink" : "downlink"));
+    add_common_event_fields(root, evt->teid, evt->mode);
+    send_json_to_exporter(root);
+    json_object_put(root);
+}
+
+static void emit_tcp_rtt_variation(const struct tcp_corr_sample_t *sample, __u8 mode,
+                                    uint64_t variation_ns) {
+    json_object *root = json_object_new_object();
+    char endpoint[16];
+    format_ipv4(sample->outer_dst_ip, endpoint, sizeof(endpoint));
+    json_object_object_add(root, "event_type", json_object_new_string("tcp_rtt_variation"));
+    json_object_object_add(root, "outer_dst_ip", json_object_new_string(endpoint));
+    json_object_object_add(root, "direction", json_object_new_string(mode_direction_name(mode)));
+    json_object_object_add(root, "variation_ns", json_object_new_int64((int64_t)variation_ns));
+    add_common_event_fields(root, sample->teid, mode);
+    send_json_to_exporter(root);
+    json_object_put(root);
+}
+
 static void emit_debug_json(__u32 teid, __u8 mode, const char *debug_proto, const char *debug_action) {
     json_object *root = json_object_new_object();
     json_object_object_add(root, "event_type", json_object_new_string("latency_debug"));
@@ -574,6 +610,7 @@ static void emit_tcp_corr_stats_json(__u8 mode, const struct tcp_corr_metric_tot
     json_object_object_add(root, "pending_evicted_overwrite_count", json_object_new_int64((int64_t)metrics->pending_evicted_overwrite));
     json_object_object_add(root, "pending_evicted_ttl_count", json_object_new_int64((int64_t)metrics->pending_evicted_ttl));
     json_object_object_add(root, "pending_evicted_flow_reuse_count", json_object_new_int64((int64_t)metrics->pending_evicted_flow_reuse));
+    json_object_object_add(root, "repeat_history_evicted_count", json_object_new_int64((int64_t)metrics->repeat_history_evicted));
     json_object_object_add(root, "ack_no_match_count", json_object_new_int64((int64_t)metrics->ack_no_match));
     send_json_to_exporter(root);
     json_object_put(root);
@@ -607,6 +644,7 @@ static void flush_tcp_corr_metrics(int force) {
             !metrics->pending_evicted_overwrite &&
             !metrics->pending_evicted_ttl &&
             !metrics->pending_evicted_flow_reuse &&
+            !metrics->repeat_history_evicted &&
             !metrics->ack_no_match) {
             continue;
         }
@@ -704,9 +742,15 @@ static void handle_flow_event(void *ctx, int cpu, void *data, __u32 size) {
 }
 
 static void handle_tcp_observation_event(void *ctx, int cpu, void *data, __u32 size) {
-    (void)ctx; (void)cpu; (void)size;
+    (void)ctx; (void)cpu;
+    if (size < sizeof(struct tcp_observation_event_t))
+        return;
 
     const struct tcp_observation_event_t *evt = data;
+    if (evt->observation == TCP_OBS_RESET) {
+        emit_tcp_path_signal(evt, "reset");
+        return;
+    }
     struct tcp_corr_key_t key = {};
     struct tcp_corr_flow_t *flow;
     struct tcp_corr_metric_totals_t *metrics = tcp_corr_metrics_for_mode(evt->mode);
@@ -719,6 +763,23 @@ static void handle_tcp_observation_event(void *ctx, int cpu, void *data, __u32 s
         if (metrics)
             metrics->data_observed++;
 
+        int repeated = 0;
+        if (evt->payload_len && !(evt->flags & 0x06)) {
+            struct tcp_repeat_key repeat_key = {
+                .teid = evt->teid, .outer_dst_ip = evt->outer_dst_ip,
+                .src_ip = evt->src_ip, .dst_ip = evt->dst_ip,
+                .ports = ((__u32)evt->src_port << 16) | evt->dst_port,
+                .seq = evt->seq, .payload_len = evt->payload_len, .mode = evt->mode,
+            };
+            uint32_t evicted_mode;
+            repeated = tcp_repeat_observe(tcp_repeat_table, &repeat_key, evt->timestamp_ns, &evicted_mode);
+            struct tcp_corr_metric_totals_t *victim_metrics = tcp_corr_metrics_for_mode(evicted_mode);
+            if (victim_metrics)
+                victim_metrics->repeat_history_evicted++;
+            if (repeated)
+                emit_tcp_path_signal(evt, "retransmission_candidate");
+        }
+
         key.mode = evt->mode;
         key.src_ip = evt->src_ip;
         key.dst_ip = evt->dst_ip;
@@ -728,6 +789,15 @@ static void handle_tcp_observation_event(void *ctx, int cpu, void *data, __u32 s
         flow = lookup_tcp_corr_flow(&key, evt->timestamp_ns, 1);
         if (!flow)
             return;
+
+        if (repeated) {
+            for (int i = 0; i < TCP_CORR_WINDOW; i++) {
+                struct tcp_corr_sample_t *pending = &flow->samples[i];
+                if (pending->active && pending->seq == evt->seq &&
+                    pending->teid == evt->teid && pending->outer_dst_ip == evt->outer_dst_ip)
+                    pending->repeated = 1;
+            }
+        }
 
         int slot_index = -1;
         for (int i = 0; i < TCP_CORR_WINDOW; i++) {
@@ -754,6 +824,7 @@ static void handle_tcp_observation_event(void *ctx, int cpu, void *data, __u32 s
         flow->samples[slot_index].dst_port = evt->dst_port;
         flow->samples[slot_index].flags = evt->flags;
         flow->samples[slot_index].active = 1;
+        flow->samples[slot_index].repeated = repeated;
         flow->next_slot = (slot_index + 1) % TCP_CORR_WINDOW;
         flow->last_seen_ns = evt->timestamp_ns;
 
@@ -824,6 +895,15 @@ static void handle_tcp_observation_event(void *ctx, int cpu, void *data, __u32 s
         __u64 latency_ns = evt->timestamp_ns - sample->timestamp_ns;
 
         emit_packet_rtt_sample_json(sample, evt->mode, latency_ns);
+        /* Variation uses exact data ACKs only, without changing legacy RTT matching. */
+        if (!sample->repeated && sample->payload_len && !(sample->flags & 0x07) &&
+            !(evt->flags & 0x04) &&
+            evt->ack_seq == sample->expected_ack && evt->timestamp_ns > sample->timestamp_ns) {
+            uint64_t variation_ns;
+            if (tcp_rtt_variation_observe(&flow->rtt_variation, sample->teid, sample->outer_dst_ip,
+                                          evt->timestamp_ns, latency_ns, &variation_ns))
+                emit_tcp_rtt_variation(sample, evt->mode, variation_ns);
+        }
         matched = 1;
         if (metrics)
             metrics->rtt_emitted++;
@@ -890,6 +970,41 @@ static void handle_tcp_observation_lost(void *ctx, int cpu, __u64 lost_cnt) {
     emit_lost_json("tcp_observation", lost_cnt);
 }
 
+static int populate_allowed_tunnels(int fd, const char *metadata)
+{
+    if (!metadata)
+        return -1;
+    struct json_object *map = json_tokener_parse(metadata);
+    int result = -1;
+    if (!map || !json_object_is_type(map, json_type_object) || !json_object_object_length(map))
+        goto out;
+
+    json_object_object_foreach(map, text, value) {
+        const char *separator = strchr(text, '|');
+        char address[INET_ADDRSTRLEN], *end;
+        struct in_addr ip;
+        if (!separator || separator - text >= (int)sizeof(address) ||
+            !json_object_is_type(value, json_type_object))
+            goto out;
+        memcpy(address, text, separator - text);
+        address[separator - text] = '\0';
+        const char *number = separator + 1;
+        unsigned long teid = strtoul(number, &end, 0);
+        if (inet_pton(AF_INET, address, &ip) != 1 || end == number || *end ||
+            teid == 0 || teid > UINT32_MAX)
+            goto out;
+        struct latency_tunnel_key key = {ip.s_addr, (__u32)teid};
+        __u8 present = 1;
+        if (bpf_map_update_elem(fd, &key, &present, BPF_ANY))
+            goto out;
+    }
+    result = 0;
+out:
+    if (map)
+        json_object_put(map);
+    return result;
+}
+
 int main(int argc, char **argv) {
     iface = (argc > 1) ? argv[1] : "n3";
 
@@ -953,6 +1068,15 @@ int main(int argc, char **argv) {
 
     map_fd_teid_slice = bpf_map__fd(skel->maps.teid_slice_map);
 
+    const char *filter_flag = getenv("RTT_FILTER_TUNNELS");
+    __u8 filter_tunnels = filter_flag && !strcmp(filter_flag, "1");
+    if (filter_tunnels &&
+        populate_allowed_tunnels(bpf_map__fd(skel->maps.allowed_latency_tunnels), getenv("TEID_UE_MAP"))) {
+        fprintf(stderr, "Cannot configure the external RTT tunnel allowlist; refusing to attach\n");
+        gtp_latency_bpf__destroy(skel);
+        return 1;
+    }
+
     int map_fd_latency_config = bpf_map__fd(skel->maps.latency_config_map);
     if (map_fd_latency_config >= 0) {
         __u32 config_key = 0;
@@ -960,6 +1084,7 @@ int main(int argc, char **argv) {
         cfg.mode = latency_mode;
         cfg.debug = debug_match;
         cfg.role = probe_role;
+        cfg.filter_tunnels = filter_tunnels;
         if (bpf_map_update_elem(map_fd_latency_config, &config_key, &cfg, BPF_ANY) != 0) {
             fprintf(stderr, "Failed to set latency config\n");
             cleanup();

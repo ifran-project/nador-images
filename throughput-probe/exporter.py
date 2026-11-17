@@ -67,8 +67,14 @@ def main():
     collector = TunnelCounters()
     REGISTRY.register(collector)
     start_http_server(int(os.environ.get("EXPORTER_PORT", "9300")))
+    target = os.getenv("NADOR_TARGET_CONTAINER")
+    prefix = []
+    if target:
+        from target_process import find_pid
+
+        prefix = ["nsenter", "-t", str(find_pid(target)), "-n"]
     process = subprocess.Popen(
-        ["./gtp_throughput_user", os.environ["IFACE"],
+        prefix + ["./gtp_throughput_user", os.environ["IFACE"],
          os.environ.get("HANDLE", "1000"), os.environ.get("PRIO", "1000"), *mapping],
         stdout=subprocess.PIPE,
         text=True,

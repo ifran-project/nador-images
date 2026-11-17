@@ -7,7 +7,8 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY latency-probe/gtp_latency.bpf.c latency-probe/gtp_latency.h \
-     latency-probe/gtp_latency_user.c latency-probe/Makefile ./
+     latency-probe/gtp_latency_user.c latency-probe/tcp_repeat.h \
+     latency-probe/tcp_rtt_variation.h latency-probe/Makefile ./
 RUN make BPFCFLAGS="-O2 -g -target bpf -I/usr/include/$(gcc -dumpmachine)"
 
 FROM debian:bookworm-slim
@@ -18,7 +19,7 @@ LABEL org.opencontainers.image.version="2026w45" \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         python3 python3-flask python3-prometheus-client \
-        libbpf1 libelf1 zlib1g libjson-c5 iproute2 bash procps \
+        libbpf1 libelf1 zlib1g libjson-c5 iproute2 bash procps util-linux \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -26,6 +27,7 @@ COPY --from=build /app/gtp_latency_user ./
 COPY latency-probe/exporter.py latency-probe/latency_socket_server.py \
      latency-probe/entrypoint-latency.sh ./
 COPY common/tunnel_identity.py ./
+COPY latency-probe/external-rtt.sh n3-oneway/target_process.py ./
 RUN chmod +x entrypoint-latency.sh
 
 EXPOSE 9100
