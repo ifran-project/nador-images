@@ -6,17 +6,17 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from probe_control import select_ues
 
-CONFIG = "nador-one-way"
-EXTERNAL = {"rtt", "n3", "upf_transit", "throughput", "user_plane_paths"}
+CONFIG = "nador-controller-settings"
+EXTERNAL = {"rtt", "n3_one_way", "upf_transit", "throughput", "user_plane_paths"}
 SCOPED = {"rtt", "throughput"}
 
 
 def change(settings, kind, request):
     if not isinstance(request, dict) or type(request.get("enabled")) is not bool:
         raise ValueError("enabled must be true or false")
-    if (kind not in EXTERNAL or kind not in settings) and kind not in settings["extended"]:
+    if (kind not in EXTERNAL or kind not in settings) and kind not in settings["host_probes"]:
         raise KeyError(kind)
-    allowed = {"enabled"} | ({"imsis", "slices"} if kind in SCOPED else {"log_samples"} if kind == "n3" else set())
+    allowed = {"enabled"} | ({"imsis", "slices"} if kind in SCOPED else {"log_samples"} if kind == "n3_one_way" else set())
     if request.keys() - allowed:
         raise ValueError(f"Allowed fields: {', '.join(sorted(allowed))}")
     if kind in EXTERNAL:
@@ -28,8 +28,8 @@ def change(settings, kind, request):
                 select_ues([], state)
         else:
             if state["enabled"] and not settings.get("image"):
-                raise ValueError("Configure one_way.image first")
-            if kind == "n3" and state["enabled"] and "one_way_targets" in settings and not (
+                raise ValueError("Deploy with n3_one_way or upf_transit under metrics: first")
+            if kind == "n3_one_way" and state["enabled"] and "one_way_targets" in settings and not (
                 {"gnb", "upf"} <= {target["role"] for target in settings["one_way_targets"]}
             ):
                 raise ValueError("N3 latency requires at least one gNB and one UPF target")
@@ -39,7 +39,7 @@ def change(settings, kind, request):
                 raise ValueError("Configure the UPF peer and test port first")
         settings[kind] = state
         return
-    settings["extended"][kind] = request["enabled"]
+    settings["host_probes"][kind] = request["enabled"]
 
 
 def make_server(core, namespace, port=8787, *, token=None, certificate=None, key=None):
@@ -81,7 +81,7 @@ def make_server(core, namespace, port=8787, *, token=None, certificate=None, key
                 cm = core.read_namespaced_config_map(CONFIG, namespace, _request_timeout=5)
                 settings = json.loads(cm.data["settings.json"])
                 if self.command == "GET" and self.path == "/v1/probes":
-                    states = {name: {"enabled": enabled} for name, enabled in settings["extended"].items()}
+                    states = {name: {"enabled": enabled} for name, enabled in settings["host_probes"].items()}
                     for name in EXTERNAL.intersection(settings):
                         states[name] = {k: v for k, v in settings[name].items()
                                         if k in ("enabled", "imsis", "slices", "log_samples", "allowed")}

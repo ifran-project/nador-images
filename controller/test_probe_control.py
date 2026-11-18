@@ -4,7 +4,7 @@ from types import SimpleNamespace as NS
 from unittest.mock import patch
 
 from probe_api import change
-from probe_control import desired_pods, external_paths, scoped_probe_pods, select_ues
+from probe_control import CONFIG, desired_pods, external_paths, reconcile_host_probes, scoped_probe_pods, select_ues
 
 
 class ProbeControlTests(unittest.TestCase):
@@ -21,7 +21,7 @@ class ProbeControlTests(unittest.TestCase):
             for g in (1, 2) for u in (3, 4)
         ]
         inventory = lambda: (rows, lambda rows: rows, lambda rows: {r["teid_args"]:r["imsi"] for r in rows})
-        settings = {"extended": {}, "rtt": dict(enabled=True, allowed=True, image="rtt:test",
+        settings = {"host_probes": {}, "rtt": dict(enabled=True, allowed=True, image="rtt:test",
                                                targets=[t for _, t, _ in points.return_value])}
 
         def selected():
@@ -61,9 +61,9 @@ class ProbeControlTests(unittest.TestCase):
             for i, role in enumerate(("gnb", "gnb", "upf", "upf"), 1)
         ]
         targets = [target for _, target, _ in points.return_value]
-        settings = {"n3": {"enabled": True, "log_samples": False},
+        settings = {"n3_one_way": {"enabled": True, "log_samples": False},
                     "upf_transit": {"enabled": True, "peer": "198.51.100.1"}, "test_port": 5201,
-                    "sample": 16, "image": "oneway:test", "one_way_targets": targets, "extended": {}}
+                    "sample": 16, "image": "oneway:test", "one_way_targets": targets, "host_probes": {}}
         desired = desired_pods(None, settings, {}, "owner")
         self.assertEqual(set(desired), {"collector", "gnb-1", "gnb-2", "upf-3", "upf-4", "transit-upf-3", "transit-upf-4"})
         for key in ("gnb-2", "upf-4", "transit-upf-3"):
@@ -78,10 +78,10 @@ class ProbeControlTests(unittest.TestCase):
                          {"nf1", "nf2", "nf3", "nf4"})
         settings["one_way_targets"] = targets[2:]
         points.return_value = points.return_value[2:]
-        change(settings, "n3", {"enabled": False})
+        change(settings, "n3_one_way", {"enabled": False})
         self.assertEqual(set(desired_pods(None, settings, {}, "owner")), {"transit-upf-3", "transit-upf-4"})
         with self.assertRaisesRegex(ValueError, "at least one gNB"):
-            change(settings, "n3", {"enabled": True})
+            change(settings, "n3_one_way", {"enabled": True})
 
     def test_scope_is_intersection(self):
         rows = [{"imsi": "001010000000100", "slice_id": "01:ffffff"},
@@ -132,7 +132,7 @@ class ProbeControlTests(unittest.TestCase):
         pods = {"app=upf-1": [pod(1)], "app=upf-2": [pod(2), pod(3, ready=False)]}
         api = NS(list_namespaced_pod=lambda namespace, label_selector: NS(items=pods[label_selector]))
         request = dict(enabled=True, allowed=True, image="example:1", targets=[target(1), target(2), target(2)])
-        settings = {"throughput": request, "extended": {}}
+        settings = {"throughput": request, "host_probes": {}}
         rows = [row(i) for i in (1, 2, 3)]
         inventory = lambda: (rows, lambda rows: rows, lambda rows: {r["upf_n3_ip"]: r["imsi"] for r in rows})
 
@@ -162,3 +162,21 @@ class ProbeControlTests(unittest.TestCase):
         self.assertEqual(scoped[key], all_probes[key])
         change(settings, "throughput", {"enabled": False})
         self.assertFalse(desired())
+
+    def test_host_probes_are_paused_and_scaled_by_name(self):
+        settings = {"host_probes": {"cpu": False, "measurement-quality": True}}
+        daemon = NS(spec=NS(template=NS(spec=NS(node_selector={}))))
+        quality = NS(spec=NS(replicas=0))
+        core = NS(read_namespaced_config_map=lambda name, namespace, **_: (
+            self.assertEqual(name, CONFIG) or NS(data={"settings.json": json.dumps(settings)})))
+        patched = {}
+        apps = NS(
+            read_namespaced_daemon_set=lambda name, *_, **__: daemon if name == "probe-cpu-node" else None,
+            read_namespaced_deployment=lambda name, *_, **__: quality if name == "probe-measurement-quality-service" else None,
+            patch_namespaced_daemon_set=lambda name, _ns, body, **_: patched.__setitem__(name, body),
+            patch_namespaced_deployment=lambda name, _ns, body, **_: patched.__setitem__(name, body),
+        )
+        reconcile_host_probes(core, apps, "monitoring")
+        self.assertEqual(set(patched), {"probe-cpu-node", "probe-measurement-quality-service"})
+        self.assertEqual(patched["probe-measurement-quality-service"], {"spec": {"replicas": 1}})
+

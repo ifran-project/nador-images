@@ -7,7 +7,7 @@
     "current_version": "multi-upf",
     "version_record": "versions/external-controller/multi-upf.json",
     "ghcr_image": "ghcr.io/ifran-project/nador-controller:multi-upf",
-    "monitoring_target": "external_probes.controller"
+    "monitoring_target": "controller"
   },
   "n3-oneway": {
     "dockerfile": "n3-oneway/Dockerfile",
@@ -16,7 +16,7 @@
     "current_version": "multi-anchor",
     "version_record": "versions/n3-oneway/multi-anchor.json",
     "ghcr_image": "ghcr.io/ifran-project/nador-n3-oneway:multi-anchor",
-    "monitoring_target": "external_probes.one_way"
+    "monitoring_target": "one_way_probe"
   },
   "throughput-probe": {
     "dockerfile": "throughput-probe/Dockerfile",
@@ -25,7 +25,7 @@
     "current_version": "external",
     "version_record": "versions/throughput-probe/external.json",
     "ghcr_image": "ghcr.io/ifran-project/nador-throughput-probe:external",
-    "monitoring_target": "external_probes.throughput"
+    "monitoring_target": "throughput_probe"
   },
   "user-plane-path": {
     "dockerfile": "user-plane-path/Dockerfile",
@@ -34,7 +34,7 @@
     "current_version": "external",
     "version_record": "versions/user-plane-path/external.json",
     "ghcr_image": "ghcr.io/ifran-project/nador-user-plane-path:external",
-    "monitoring_target": "external_probes.user_plane_paths"
+    "monitoring_target": "path_probe"
   },
   "latency-probe": {
     "dockerfile": "latency-probe/Dockerfile",
@@ -43,7 +43,7 @@
     "current_version": "2026w45",
     "version_record": "versions/latency-probe/2026w45.json",
     "ghcr_image": "ghcr.io/ifran-project/ebpf-latency-probe:2026w45",
-    "monitoring_target": "probes.probe"
+    "monitoring_target": "rtt_probe"
   },
   "ue-mapper": {
     "dockerfile": "ue-mapper/Dockerfile",
@@ -52,7 +52,7 @@
     "current_version": "2026w43",
     "version_record": "versions/ue-mapper/2026w43.json",
     "ghcr_image": "ghcr.io/ifran-project/ue_mapper_api:2026w43",
-    "monitoring_target": "components.ue-mapper-api"
+    "monitoring_target": "ue_mapper"
   },
   "amf-sniffer": {
     "dockerfile": "amf-sniffer/Dockerfile",
@@ -61,7 +61,7 @@
     "current_version": "2026w43",
     "version_record": "versions/amf-sniffer/2026w43.json",
     "ghcr_image": "ghcr.io/ifran-project/amf-sniffer:2026w43",
-    "monitoring_target": "probes.amf_sniffer"
+    "monitoring_target": "amf_sniffer"
   },
   "smf-sniffer": {
     "dockerfile": "smf-sniffer/Dockerfile",
@@ -70,7 +70,7 @@
     "current_version": "2026w43",
     "version_record": "versions/smf-sniffer/2026w43.json",
     "ghcr_image": "ghcr.io/ifran-project/smf-sniffer:2026w43",
-    "monitoring_target": "probes.smf_sniffer"
+    "monitoring_target": "smf_sniffer"
   },
   "packet-pairer": {
     "dockerfile": "packet-pairer/Dockerfile",
@@ -79,7 +79,7 @@
     "current_version": "2026w43",
     "version_record": "versions/packet-pairer/2026w43.json",
     "ghcr_image": "ghcr.io/ifran-project/packet-pairer:2026w43",
-    "monitoring_target": "components.packet-pairer"
+    "monitoring_target": "packet_pairer"
   },
   "kpi-calculator-oai": {
     "dockerfile": "kpi-calculator-oai/Dockerfile",
@@ -88,6 +88,6 @@
     "current_version": "2026w43-radio-scoped",
     "version_record": "versions/kpi-calculator-oai/2026w43-radio-scoped.json",
     "ghcr_image": "ghcr.io/ifran-project/kpi-calculator-oai:2026w43-radio-scoped",
-    "monitoring_target": "components.kpi-calculator-oai"
+    "monitoring_target": "kpi_calculator_oai"
   }
 }
