@@ -13,16 +13,15 @@ def apply_records(manifest: dict, records: list[dict], images: dict) -> str:
     details = []
     for record in records:
         component = record["component"]
-        group, key = images[component]["monitoring_target"].split(".")
+        key = images[component]["monitoring_target"]
         sha = record["source_commit"]
         reference = images[component]["ghcr_image"].rsplit(":", 1)[0] + ":sha-" + sha
         if reference not in record["tags"]:
             raise ValueError(f"Missing commit-tagged publication for {component}")
-        if group in ("probes", "external_probes"):
-            manifest[group][key] = reference
-        else:
-            repository, tag = reference.rsplit(":", 1)
-            manifest[group][key].update(repository=repository, image_tag=tag)
+        if key not in manifest["images"]:
+            raise ValueError(f"{component}: nador's images.json has no image {key!r}")
+        # Pin both: the tag says which commit, the digest guarantees the exact image.
+        manifest["images"][key] = f"{reference}@{record['digest']}"
         manifest.setdefault("builds", {})[component] = {
             key: record[key] for key in ("digest", "source_repository", "source_commit", "source_change")
         }

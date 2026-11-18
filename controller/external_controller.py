@@ -9,7 +9,7 @@ import kubernetes
 import requests
 
 from probe_api import make_server
-from probe_control import reconcile, reconcile_extended
+from probe_control import reconcile, reconcile_host_probes
 from ue_inventory import build_teid_ue_map, filter_conflicting_ue_teids, ue_mapping_is_complete
 
 
@@ -50,7 +50,7 @@ def main():
         try:
             while not stop.is_set():
                 try:
-                    reconcile_extended(core, apps, namespace)
+                    reconcile_host_probes(core, apps, namespace)
                     reconcile(core, namespace, inventory)
                 except Exception:
                     logging.exception("External probe reconciliation failed")

@@ -6,23 +6,24 @@ import logging
 import re
 
 
-SELECTOR = "nador-one-way-managed=true"
+CONFIG = "nador-controller-settings"
+SELECTOR = "nador-probe-managed=true"
 MAPPER = "http://ue-mapper-api:8080"
 COLLECTOR = "http://nador-one-way-collector:55393"
 PACKET_PAIRER_HOST = "packet-pairer"
 PACKET_PAIRER_PORT = "9201"
-EXTENDED_PROBES = ("cpu", "drops", "queueing", "tcp", "split-signaling", "measurement-quality")
+HOST_PROBES = ("cpu", "drops", "queueing", "tcp", "split-signaling", "measurement-quality")
 PAUSED_SELECTOR = "monitoring.blueprint/probe-paused"
 
 
-def reconcile_extended(core, apps, namespace):
-    cm = core.read_namespaced_config_map("nador-one-way", namespace, _request_timeout=5)
-    states = json.loads(cm.data["settings.json"]).get("extended", {})
-    for kind in EXTENDED_PROBES:
+def reconcile_host_probes(core, apps, namespace):
+    cm = core.read_namespaced_config_map(CONFIG, namespace, _request_timeout=5)
+    states = json.loads(cm.data["settings.json"]).get("host_probes", {})
+    for kind in HOST_PROBES:
         if type(states.get(kind)) is not bool:
             continue
         try:
-            base = f"probe-{kind}-extended"
+            base = f"probe-{kind}"
             if kind == "measurement-quality":
                 name = base + "-service"
                 desired = int(states[kind])
@@ -116,10 +117,10 @@ def scoped_points(api, targets, request, kind):
 
 
 def pod_spec(role, settings, owner_uid, command, *, target=None, metrics_port=None, env=None, path="/metrics"):
-    name = f"nador-one-way-{role}"
+    name = f"nador-probe-{role}"
     pull_secret = settings.get("image_pull_secret")
     fingerprint = hashlib.sha256(json.dumps([settings["image"], pull_secret, command, target, env], sort_keys=True).encode()).hexdigest()
-    annotations = {"nador-one-way-config": fingerprint}
+    annotations = {"nador-probe-config": fingerprint}
     if metrics_port:
         annotations.update({"prometheus.io/scrape": "true", "prometheus.io/port": str(metrics_port)})
         annotations["prometheus.io/path"] = path
@@ -138,25 +139,25 @@ def pod_spec(role, settings, owner_uid, command, *, target=None, metrics_port=No
     if target:
         spec.update(nodeName=target["node"], hostPID=True, tolerations=[{"operator": "Exists"}])
         container["securityContext"] = {"privileged": True}
-    labels = {"nador-one-way-managed": "true", "nador-one-way-role": role}
+    labels = {"nador-probe-managed": "true", "nador-probe-role": role}
     if target:
         labels["nador-target-pod"] = target["pod"][:63].rstrip("-.")
     return {
         "apiVersion": "v1", "kind": "Pod",
         "metadata": {"name": name, "labels": labels,
                      "annotations": annotations, "ownerReferences": [{
-                         "apiVersion": "v1", "kind": "ConfigMap", "name": "nador-one-way", "uid": owner_uid}]},
+                         "apiVersion": "v1", "kind": "ConfigMap", "name": CONFIG, "uid": owner_uid}]},
         "spec": spec,
     }
 
 
 def desired_pods(api, settings, targets, owner):
     desired = {}
-    n3, upf = settings["n3"], settings["upf_transit"]
+    n3, upf = settings["n3_one_way"], settings["upf_transit"]
     if not n3["enabled"] and not upf["enabled"]:
         return desired
     if not settings.get("image"):
-        raise ValueError("Set one_way.image before enabling probes")
+        raise ValueError("Deploy with n3_one_way or upf_transit under metrics: before enabling one-way probes")
     if upf["enabled"] and (not upf.get("peer") or not settings["test_port"]):
         raise ValueError("UPF transit requires peer and test_port")
     if n3["enabled"]:
@@ -279,7 +280,7 @@ def external_paths(api, settings, targets, owner):
 
 
 def reconcile(api, namespace, inventory=None):
-    cm = api.read_namespaced_config_map("nador-one-way", namespace)
+    cm = api.read_namespaced_config_map(CONFIG, namespace)
     settings, targets = (json.loads(cm.data[key]) for key in ("settings.json", "targets.json"))
     desired = {}
     preserve = set()
@@ -298,17 +299,17 @@ def reconcile(api, namespace, inventory=None):
             logging.exception("%s reconciliation deferred", kind)
     current = api.list_namespaced_pod(namespace, label_selector=SELECTOR).items
     for pod in current:
-        role = pod.metadata.labels["nador-one-way-role"]
+        role = pod.metadata.labels["nador-probe-role"]
         if any(role.startswith(kind + "-") for kind in preserve):
             continue
         expected = desired.pop(role, None)
-        if not any(ref.kind == "ConfigMap" and ref.name == "nador-one-way" and ref.uid == cm.metadata.uid
+        if not any(ref.kind == "ConfigMap" and ref.name == CONFIG and ref.uid == cm.metadata.uid
                    for ref in pod.metadata.owner_references or []):
             continue
         if pod.metadata.deletion_timestamp:
             continue
-        current_hash = (pod.metadata.annotations or {}).get("nador-one-way-config")
-        if not expected or expected["metadata"]["annotations"]["nador-one-way-config"] != current_hash:
+        current_hash = (pod.metadata.annotations or {}).get("nador-probe-config")
+        if not expected or expected["metadata"]["annotations"]["nador-probe-config"] != current_hash:
             api.delete_namespaced_pod(pod.metadata.name, namespace, body={
                 "preconditions": {"uid": pod.metadata.uid},
             })

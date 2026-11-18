@@ -10,8 +10,8 @@ from probe_api import make_server
 
 class ProbeApiTests(unittest.TestCase):
     def test_http_switches_and_scope(self):
-        state = {"rtt": {"allowed": True, "enabled": False}, "n3": {"enabled": False},
-                 "upf_transit": {"enabled": False}, "extended": {"cpu": False}}
+        state = {"rtt": {"allowed": True, "enabled": False}, "n3_one_way": {"enabled": False},
+                 "upf_transit": {"enabled": False}, "host_probes": {"cpu": False}}
 
         class Core:
             def read_namespaced_config_map(self, *args, **kwargs):
