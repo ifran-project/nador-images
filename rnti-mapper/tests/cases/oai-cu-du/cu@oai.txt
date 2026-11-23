@@ -1,0 +1,3 @@
+UE 0 CU UE ID 1 DU UE ID 19420 RNTI 4bdc random identity 1234:
+    associated DU:  DU assoc ID 7
+[1] DU ID 3584 (du1) assoc_id 7: 1 cell

@@ -1,0 +1,10 @@
+{
+  "image": "ghcr.io/ifran-project/nador-rnti-mapper:2026w48",
+  "changes": "RNTI to UE identity mapping (ran_ue_info) as its own image, with kubectl inside, instead of busybox with the node's kubectl.",
+  "source_origin": "nador csi branch (charts/rnti-mapper/files)",
+  "source_files_sha256": {
+    "rnti-mapper/Dockerfile": "bb851c5c49495b140033ad073f0dc189f0b650d71d5b1a5d0aa306f68f08ad30",
+    "rnti-mapper/run.sh": "9981f047a14e865d849716d1e72a9b64901bf670d744c64d54296584e4f619c6",
+    "rnti-mapper/join.awk": "c4e33cc579e89fcbc32e53b1ee556d76e9143b85e34757406eddc3dad5c696ca"
+  }
+}

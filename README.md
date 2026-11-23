@@ -9,6 +9,7 @@ Source and Dockerfiles for the monitoring containers used by [NADOR](https://git
 | `amf-sniffer/`, `smf-sniffer/`, `ue-mapper/` | Control-plane observations and UE, session, and slice mapping. |
 | `oai-gnb-metrics-parser/`, `kpi-calculator-oai/` | OAI log parsing and KPI calculation. |
 | `packet-pairer/` | Matches gNB and UPF RTT observations for the same packet. |
+| `rnti-mapper/` | Maps each RNTI to its RAN UE id, IMSI and UE name (`ran_ue_info`) for Grafana joins on RNTI. |
 
 ## Build and publish
 

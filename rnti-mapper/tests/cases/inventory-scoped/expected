@@ -1,0 +1,3 @@
+oai
+ran_ue_info{ran_node="gnb1",ran_component="gnb1",rnti="4bdc",ran_ue_id="1",imsi="001010000000001",ue_name="ue1"} 1
+ran_ue_info{ran_node="gnb2",ran_component="gnb2",rnti="5abc",ran_ue_id="1",imsi="001010000000002",ue_name="ue2"} 1

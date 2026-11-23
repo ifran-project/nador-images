@@ -65,8 +65,19 @@ jobs:
             --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
             --label "org.opencontainers.image.revision=$GITHUB_SHA" \
             "$BUILD_CONTEXT"
+      # Images without Python sources (the RNTI mapper is shell and awk) have no python3 to run.
       - name: Check packaged Python source
-        run: docker run --rm --network none --entrypoint python3 "$VERSION_IMAGE" -m compileall -q .
+        run: |
+          if find "$SOURCE_DIR" -name '*.py' | grep -q .; then
+            docker run --rm --network none --entrypoint python3 "$VERSION_IMAGE" -m compileall -q .
+          else
+            echo "No Python sources in $SOURCE_DIR"
+          fi
+      - name: Check the RNTI mapper join with the image's awk
+        if: matrix.component == 'rnti-mapper'
+        run: |
+          docker run --rm --network none --user 0 -v "$PWD/rnti-mapper/tests:/tests:ro" \
+            -e JOIN_AWK=/app/join.awk --entrypoint sh "$VERSION_IMAGE" /tests/test_join.sh
       - name: Check the packaged controller starts importing
         if: matrix.component == 'external-controller'
         run: |

@@ -1,0 +1,3 @@
+[AMF] UEs' Information
+|index|5GMM state|IMSI|GUTI|RAN UE NGAP ID|AMF UE NGAP ID|PLMN|Cell Id|
+|      1|      5GMM-REGISTERED|   001010000000001|   0x0|        0x01|      0x01|   00101|      0|
