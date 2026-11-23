@@ -19,7 +19,7 @@ Source and Dockerfiles for the monitoring containers used by [NADOR](https://git
 docker build --platform linux/amd64 -f latency-probe/Dockerfile -t nador-latency:local .
 ```
 
-The standard workflow builds changed components on pull requests and publishes successful `main` builds to [GHCR](https://github.com/orgs/ifran-project/packages). Use a `sha-<commit>` tag or a digest to select an exact image. The OAI gNB metrics parser has its own workflow.
+The standard workflow builds changed components on pull requests and publishes successful `main` builds to [GHCR](https://github.com/orgs/ifran-project/packages). Use a `sha-<commit>` tag or a digest to select an exact image. With the `MONITORING_REPO_TOKEN` secret set, each `main` build also opens a pull request on NADOR's `develop` branch with the new digests. The OAI gNB metrics parser has its own workflow.
 
 The legacy injector and standalone throughput images are retired. Current Nador deployments use the external controller and throughput probe.
 
