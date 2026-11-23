@@ -18,15 +18,15 @@ def apply_records(manifest: dict, records: list[dict], images: dict) -> str:
         reference = images[component]["ghcr_image"].rsplit(":", 1)[0] + ":sha-" + sha
         if reference not in record["tags"]:
             raise ValueError(f"Missing commit-tagged publication for {component}")
-        if key not in manifest["images"]:
-            raise ValueError(f"{component}: nador's images.json has no image {key!r}")
+        # A component published for the first time adds its image; the pull request is reviewed before it lands.
+        new = key not in manifest["images"]
         # Pin both: the tag says which commit, the digest guarantees the exact image.
         manifest["images"][key] = f"{reference}@{record['digest']}"
         manifest.setdefault("builds", {})[component] = {
             key: record[key] for key in ("digest", "source_repository", "source_commit", "source_change")
         }
         source = f"https://github.com/{record['source_repository']}/commit/{sha}"
-        lines.append(f"| {component} | `{reference}` | `{record['digest']}` |")
+        lines.append(f"| {component}{' (new)' if new else ''} | `{reference}` | `{record['digest']}` |")
         details.append(f"- {component}: [{record['source_change']}]({source})")
     lines.extend(["", *details])
     lines.extend(["", "Only default image selections change. Explicit scenario overrides remain in effect.",

@@ -89,5 +89,14 @@
     "version_record": "versions/kpi-calculator-oai/2026w43-radio-scoped.json",
     "ghcr_image": "ghcr.io/ifran-project/kpi-calculator-oai:2026w43-radio-scoped",
     "monitoring_target": "kpi_calculator_oai"
+  },
+  "rnti-mapper": {
+    "dockerfile": "rnti-mapper/Dockerfile",
+    "context": "rnti-mapper",
+    "platform": "linux/amd64",
+    "current_version": "2026w48",
+    "version_record": "versions/rnti-mapper/2026w48.json",
+    "ghcr_image": "ghcr.io/ifran-project/nador-rnti-mapper:2026w48",
+    "monitoring_target": "rnti_mapper"
   }
 }
