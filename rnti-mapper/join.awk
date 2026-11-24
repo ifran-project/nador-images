@@ -5,9 +5,10 @@
 # is the nador component name), as in the service label metrics-ran-<component> of the OAI gNB/DU metrics.
 # rnti is 4-digit lowercase hex, as written by OAI ("RNTI %04x") and shown by OCUDU ("c-rnti=0x...").
 #
-# Usage: awk -v core=oai|open5gs -f join.awk ue_names core.log inventory.json node_ips <dir>/<component>@<oai|ocudu>.txt ...
+# Usage: awk -v core=oai|open5gs|free5gc -f join.awk ue_names core.log inventory.json node_ips <dir>/<component>@<oai|ocudu>.txt ...
 #   ue_names       "IMSI name" lines ('#' comments)
-#   core.log       OAI AMF log ("UEs' Information" tables) or Open5GS AMF attach lines
+#   core.log       OAI AMF log ("UEs' Information" tables), Open5GS AMF attach lines or free5gc AMF lines tagged
+#                  [amf_ue_ngap_id:RU:n,AU:m(3GPP)]
 #   inventory.json ue-mapper-api /inventory/ues (may be empty): IMSI per (gnb_id = gNB N3 IP, RAN UE NGAP id), exact
 #   node_ips       "<component> <ip> ..." lines: IPs of each RRC node pod (pod network and Multus)
 #   *@oai.txt      OAI nrRRC_stats.log of a gNB / CU / CU-CP
@@ -43,6 +44,7 @@ FILENAME == ARGV[1] { if ($1 !~ /^#/ && NF >= 2) name[$1] = $2; next }
 FILENAME == ARGV[2] {
   gsub(/\033\[[0-9;]*m/, "")          # strip ANSI colors (Open5GS)
   if (core == "open5gs") { o5gs_line(); next }
+  if (core == "free5gc") { f5gc_line(); next }
   # OAI AMF "UEs' Information" table. Only the last table is kept.
   if (index($0, "UEs' Information")) { split("", imsi_of); split("", reg); next }
   n = split($0, f, "|")
@@ -84,6 +86,35 @@ function o5gs_line(   im, p, k) {
   if (npend == 1) { for (k in pend) bind(k, im) }
   else { for (k in pend) { amb[k] = 1; delete imsi_of[k] } }
   split("", pend); npend = 0
+}
+
+# free5gc AMF (logrus, one UE per line). Every line about a UE is tagged with its NGAP ids, "RU" the RAN UE NGAP id
+# and "AU" the AMF UE NGAP id (unique in the AMF):
+#   [INFO][AMF][Gmm][amf_ue_ngap_id:RU:0,AU:1(3GPP)][SUPI:imsi-208930000000001] Handle Registration Request
+#   [INFO][AMF][Ngap][amf_ue_ngap_id:RU:0,AU:1(3GPP)][ran_addr:10.244.1.5:38412] Send Initial Context Setup Request
+# The Gmm lines give the IMSI of an AU, the Ngap lines the N2 address of its gNB / CU-CP: with that address among
+# the IPs of an RRC node pod the IMSI is bound to that node exactly, else to the RAN UE NGAP id alone (see END).
+# A later AU with the same RU (a new UE context) replaces the earlier one, as AUs are seen in allocation order.
+function f5gc_line(   q, au, ip) {
+  if (!match($0, /\[amf_ue_ngap_id:RU:[0-9]+,AU:[0-9]+/)) return
+  split(substr($0, RSTART + 19, RLENGTH - 19), q, /,AU:/)     # "n,AU:m" -> n m
+  au = q[2] + 0
+  if (!(au in f5_ru)) f5_aus[++nf5] = au
+  f5_ru[au] = q[1] + 0
+  if (match($0, /\[SUPI:imsi-[0-9]+\]/)) f5_imsi[au] = substr($0, RSTART + 11, RLENGTH - 12)
+  if (match($0, /\[ran_addr:[0-9.]+:[0-9]+\]/)) {
+    ip = substr($0, RSTART + 10, RLENGTH - 11); sub(/:[0-9]+$/, "", ip); f5_ip[au] = ip
+  }
+}
+
+# free5gc identities, once the RRC node IPs are known: per RRC node when the N2 address is one of its pod IPs
+function f5gc_bind(   i, au) {
+  for (i = 1; i <= nf5; i++) {
+    au = f5_aus[i]
+    if (!(au in f5_imsi)) continue
+    if ((au in f5_ip) && (f5_ip[au] in node_of_ip)) scoped[node_of_ip[f5_ip[au]] SUBSEP f5_ru[au]] = f5_imsi[au]
+    else bind(f5_ru[au], f5_imsi[au])
+  }
 }
 
 # ue-mapper-api inventory: {"ues":[{"imsi":"...","ran_ue_id":"0","gnb_id":"10.244.1.2",...},...]}, read whole
@@ -171,7 +202,8 @@ function ue_name(im,   k, hit, n) {
 }
 
 END {
-  load_inventory()
+  f5gc_bind()
+  load_inventory()   # the N2 captures, when present, take precedence
   # OCUDU contexts with a known NGAP id, one row per live CU-CP index
   for (i = 1; i <= nk; i++) {
     k = ok_list[i]

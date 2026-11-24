@@ -8,7 +8,8 @@
 #          log volume) or else from the RAN container working directory.
 #   ocudu: the gNB/CU logs on stdout (info level): its "c-rnti=" / "ran_ue=" lines are appended incrementally
 #          (kubectl logs --since-time); the file starts again with each new pod.
-# Core: AMF log (OAI: last "UEs' Information" tables; Open5GS: attach lines, incremental) and, when set,
+# Core: AMF log (OAI: last "UEs' Information" tables; Open5GS: attach lines; free5gc: lines tagged with the UE's
+# NGAP ids; the last two incremental) and, when set,
 # the ue-mapper-api inventory (INVENTORY_URL): (gNB N3 IP, RAN UE NGAP id) <-> IMSI from the N2/PFCP captures.
 # The IPs of each RRC node pod (pod network and Multus networks) let join.awk use the inventory per RAN node.
 # Errors are printed to the container log when they change.
@@ -23,6 +24,7 @@ httpd -p "${PORT}" -h /www
 OAI_FILES="/oai-gnb-logs/nrRRC_stats.log /opt/oai-gnb/nrRRC_stats.log"
 OCUDU_PATTERN='c-rnti=0x|ran_ue='
 OPEN5GS_PATTERN='InitialUEMessage|RAN_UE_NGAP_ID\[|Known UE by|Unknown UE by|\[suci-|Registration complete'
+FREE5GC_PATTERN='amf_ue_ngap_id:RU:[0-9]+,AU:[0-9]+.*(SUPI:imsi-|ran_addr:)'
 
 low() { if nice -n 19 true 2> /dev/null; then nice -n 19 "$@"; else "$@"; fi; }
 
@@ -96,6 +98,8 @@ while true; do
     : > "$D/core.log"; echo "no running AMF for ${AMF_SELECTOR} in ${CORE_NS}" >> "$D/err"
   elif [ "${CORE_TYPE}" = open5gs ]; then
     incremental_log "${CORE_NS}" "$amf" "${AMF_CONTAINER}" "$D/core.log" "$OPEN5GS_PATTERN"
+  elif [ "${CORE_TYPE}" = free5gc ]; then
+    incremental_log "${CORE_NS}" "$amf" "${AMF_CONTAINER}" "$D/core.log" "$FREE5GC_PATTERN"
   else
     kubectl -n "${CORE_NS}" logs "$amf" -c "${AMF_CONTAINER}" --tail=3000 > "$D/core.log" 2>> "$D/err"
   fi

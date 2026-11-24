@@ -1,0 +1,2 @@
+2026-11-24T10:00:06.000 [CU-CP   ] [I] ue=1 c-rnti=0x4601: UE created
+2026-11-24T10:00:06.001 [NGAP    ] [I] Tx PDU ue=1 ran_ue=0: InitialUEMessage

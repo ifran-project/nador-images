@@ -1,0 +1,8 @@
+2026-11-24T10:00:00.100000000Z 2026-11-24T10:00:00.099Z [36m [INFO][AMF][Gmm][amf_ue_ngap_id:RU:0,AU:1(3GPP)][SUPI:] Handle Registration Request[0m
+2026-11-24T10:00:00.200000000Z 2026-11-24T10:00:00.199Z [36m [INFO][AMF][Gmm][amf_ue_ngap_id:RU:0,AU:1(3GPP)][SUPI:imsi-208930000000001] Handle Registration Complete[0m
+2026-11-24T10:00:00.210000000Z 2026-11-24T10:00:00.209Z [36m [INFO][AMF][Ngap][amf_ue_ngap_id:RU:0,AU:1(3GPP)][ran_addr:10.0.0.7:38412] Send Initial Context Setup Request[0m
+2026-11-24T10:00:01.000000000Z 2026-11-24T10:00:00.999Z [36m [INFO][AMF][Ngap][amf_ue_ngap_id:RU:0,AU:2(3GPP)][ran_addr:10.0.0.8:38412] Send Downlink Nas Transport[0m
+2026-11-24T10:00:01.100000000Z 2026-11-24T10:00:01.099Z [36m [INFO][AMF][Gmm][amf_ue_ngap_id:RU:0,AU:2(3GPP)][SUPI:imsi-208930000000002] Handle Registration Complete[0m
+2026-11-24T10:00:05.000000000Z 2026-11-24T10:00:04.999Z [36m [INFO][AMF][Ngap][amf_ue_ngap_id:RU:0,AU:1(3GPP)][ran_addr:10.0.0.7:38412] Send UE Context Release Command[0m
+2026-11-24T10:00:06.000000000Z 2026-11-24T10:00:05.999Z [36m [INFO][AMF][Ngap][amf_ue_ngap_id:RU:0,AU:3(3GPP)][ran_addr:10.0.0.7:38412] Send Downlink Nas Transport[0m
+2026-11-24T10:00:06.100000000Z 2026-11-24T10:00:06.099Z [36m [INFO][AMF][Gmm][amf_ue_ngap_id:RU:0,AU:3(3GPP)][SUPI:imsi-208930000000003] Handle Registration Complete[0m
