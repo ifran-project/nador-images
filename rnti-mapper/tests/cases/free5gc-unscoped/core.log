@@ -1,0 +1,2 @@
+2026-11-24T10:00:00.100000000Z 2026-11-24T10:00:00.099Z [INFO][AMF][Ngap][amf_ue_ngap_id:RU:1,AU:1(3GPP)][ran_addr:192.168.10.5:38412] Send Downlink Nas Transport
+2026-11-24T10:00:00.200000000Z 2026-11-24T10:00:00.199Z [INFO][AMF][Gmm][amf_ue_ngap_id:RU:1,AU:1(3GPP)][SUPI:imsi-001010000000101] Handle Registration Complete

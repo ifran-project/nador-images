@@ -1,0 +1,2 @@
+UE 0 CU UE ID 1 DU UE ID 19420 RNTI 4bdc random identity 1234:
+    associated DU:  (local/integrated CU-DU)
