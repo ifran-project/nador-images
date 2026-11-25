@@ -12,6 +12,9 @@ cleanup() {
 trap cleanup EXIT
 
 printf 'SSB ARFCN 640000\nARFCN 641280 SCS 30 (kHz)\n' > "$runtime_dir/nrRRC_stats.log"
+# UE header of OAI 2026.w46 and later, with the PCI and cell ID of the UE (R2Lab, 21 November 2026)
+printf 'UE RNTI e8a9 PCI 1 CellID 2 CU-UE-ID 1 in-sync PH 48 dB PCMAX 24 dBm, average RSRP -74 (32 meas)\n' \
+  > "$runtime_dir/nrMAC_stats.log"
 container=$(docker run -d --network none --platform linux/amd64 \
   --mount "type=bind,source=$runtime_dir,target=/oai-gnb-logs,readonly" "$1")
 docker exec -i "$container" python3 - <<'PY'
@@ -29,7 +32,13 @@ for attempt in range(20):
             raise
         time.sleep(0.5)
 
-expected = {"oai_gnb_rrc_arfcn 641280.0", "oai_gnb_rrc_scs_khz 30.0"}
+expected = {
+    "oai_gnb_rrc_arfcn 641280.0",
+    "oai_gnb_rrc_scs_khz 30.0",
+    'oai_gnb_mac_ph{rnti="e8a9"} 48.0',
+    'oai_gnb_mac_pcmax{rnti="e8a9"} 24.0',
+    'oai_gnb_mac_avg_rsrp{rnti="e8a9"} -74.0',
+}
 missing = expected - set(metrics.splitlines())
 if missing:
     raise SystemExit(f"Missing or incorrect metrics: {sorted(missing)}")
