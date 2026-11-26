@@ -6,8 +6,7 @@ import subprocess
 from pathlib import Path
 
 
-# Files that build or record every image: a change rebuilds them all. Other workflows (oai-gnb-metrics-parser.yml
-# builds its own image) do not.
+# Files that build or record every image: a change rebuilds them all. Other files under .github/ do not.
 SHARED = {
     "images.json",
     ".dockerignore",

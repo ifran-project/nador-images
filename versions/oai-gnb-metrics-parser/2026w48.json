@@ -1,0 +1,10 @@
+{
+  "image": "ghcr.io/ifran-project/oai-gnb-metrics-parser:2026w48",
+  "changes": "OAI gNB metrics parser built, versioned and published like the other images (it had its own workflow and OAI-style tags 2026.w38, 2026.w46); per-UE MAC metrics and RRC cell metrics labelled with their cell (pci, cell_id), PRBs of each cell.",
+  "source_origin": "upstream OAI gNB metrics parser (redistributed with permission), with the 2026.w46 UE header",
+  "source_files_sha256": {
+    "oai-gnb-metrics-parser/Dockerfile": "fe864d68866ca62639f3b45d85301262c96353d709b8afdfa1ced2bfd4e62d1a",
+    "oai-gnb-metrics-parser/requirements.txt": "8428f3d83f19c955e9520db44ee8e04ec3f42851964b33f943cac61794ecccb9",
+    "oai-gnb-metrics-parser/gnb-log-parser.py": "1de0ba03c38fe362b22d37de6d0d8a8366b96458f2618e8c9b8397e0cf320bae"
+  }
+}

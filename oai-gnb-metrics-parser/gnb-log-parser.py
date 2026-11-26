@@ -18,6 +18,17 @@ UE_LABELS = ["rnti", "pci", "cell_id"]
 # Labels of the cell-level RRC metrics (one per cell of the DU list of nrRRC_stats.log, empty before OAI 2026.w46)
 CELL_LABELS = ["pci", "cell_id"]
 
+# Cells of this pod at the last parse: more than one makes the L1 metrics unattributable (see warn_cells)
+warned_cells = 0
+
+def warn_cells(cells):
+    """Print once, at each change, that the L1 metrics of a pod with several cells cannot be attributed."""
+    global warned_cells
+    if cells > 1 and cells != warned_cells:
+        print(f"[WARNING] {cells} cells in this gNB/DU: the L1 metrics (oai_gnb_l1_*) cannot be attributed to a cell "
+              "(nrL1_stats.log names none and every L1 instance rewrites it); use them only with one cell per pod")
+    warned_cells = cells
+
 def get_or_create_metric(metric_name, description, labelnames):
     if metric_name not in metric_defs:
         metric_defs[metric_name] = Gauge(metric_name, description, labelnames=labelnames, registry=registry)
@@ -93,6 +104,11 @@ def parse_logs():
                 current_rnti = None
                 current_cu_ue_id = None
                 current_ue = {}
+                # One "=== Cell <i> ===" section per cell since OAI 2026.w46 (none before)
+                cells = sum(1 for line in lines if line.startswith("=== Cell "))
+                if cells:
+                    get_or_create_metric("oai_gnb_cells", "Cells of this gNB or DU (more than 1: the L1 metrics are not per cell)", []).set(cells)
+                warn_cells(cells)
                 for line in lines:
                     if match := re.search(r"CU-UE-ID \(none\)", line):
                         current_rnti = None

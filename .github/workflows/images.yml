@@ -73,6 +73,9 @@ jobs:
           else
             echo "No Python sources in $SOURCE_DIR"
           fi
+      - name: Check the OAI metrics parser endpoint
+        if: matrix.component == 'oai-gnb-metrics-parser'
+        run: bash oai-gnb-metrics-parser/smoke-test.sh "$VERSION_IMAGE"
       - name: Check the RNTI mapper join with the image's awk
         if: matrix.component == 'rnti-mapper'
         run: |

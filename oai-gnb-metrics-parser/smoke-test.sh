@@ -49,6 +49,7 @@ expected = {
     'oai_gnb_rrc_arfcn{cell_id="12345678",pci="1"} 651000.0',
     'oai_gnb_rrc_ssb_arfcn{cell_id="12345678",pci="1"} 650016.0',
     'oai_gnb_rrc_prbs{cell_id="12345678",pci="1"} 106.0',
+    'oai_gnb_cells 2.0',
     'oai_gnb_mac_ph{cell_id="2",pci="1",rnti="e8a9"} 48.0',
     'oai_gnb_mac_pcmax{cell_id="2",pci="1",rnti="e8a9"} 24.0',
     'oai_gnb_mac_avg_rsrp{cell_id="2",pci="1",rnti="e8a9"} -74.0',
