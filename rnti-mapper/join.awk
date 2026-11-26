@@ -12,7 +12,9 @@
 #   inventory.json ue-mapper-api /inventory/ues (may be empty): IMSI per (gnb_id = gNB N3 IP, RAN UE NGAP id), exact
 #   node_ips       "<component> <ip> ..." lines: IPs of each RRC node pod (pod network and Multus)
 #   *@oai.txt      OAI nrRRC_stats.log of a gNB / CU / CU-CP
-#   *@ocudu.txt    OCUDU gNB/CU log lines "c-rnti=" and "ran_ue=" (CU-CP and NGAP at info level)
+#   *@ocudu.txt    OCUDU gNB/CU log lines "c-rnti=" and "ran_ue=" (CU-CP and NGAP at info level), and of a CU-CP its
+#                  F1AP lines "PDU du=", "Trigger intra-CU (inter-DU) handover" and "UE Removal Routine" lines
+#   *@dus.txt      "<gNB-DU ID> <DU component>" lines of an OCUDU CU-CP: names the DU of each UE (gnb_du_id)
 #
 # RAN UE NGAP ids are allocated by each NG node (gNB, CU) independently. An inventory row whose gnb_id is an IP of an
 # RRC node binds the IMSI to that node exactly. Otherwise (no inventory, N3 IP not on the RRC node pod) the core view
@@ -146,7 +148,7 @@ function load_inventory(   n, i, o, id, im, ip) {
 # RAN files: <component>@<type>.txt
 FNR == 1 && FILENAME != ARGV[1] && FILENAME != ARGV[2] && FILENAME != ARGV[3] && FILENAME != ARGV[4] {
   src = FILENAME; sub(/^.*\//, "", src); sub(/\.txt$/, "", src)
-  split(src, sp, "@"); node = sp[1]; type = sp[2]; cur_ue = ""
+  split(src, sp, "@"); node = sp[1]; type = sp[2]; cur_ue = ""; ho_src = ""
 }
 
 # OAI nrRRC_stats.log:
@@ -179,11 +181,51 @@ type == "oai" && /^\[[0-9]+\] DU ID [0-9]+ \(/ {
 #   [CU-CP] ue=0 c-rnti=0x4601: UE created      [RRC] ue=0 c-rnti=0x4601: ...
 #   [NGAP] Tx PDU ue=0 ran_ue=0: InitialUEMessage
 # A "UE created" line starts a new context on that index (the index is reused).
+# A CU-CP also logs the F1AP messages of each UE with the gNB-DU ID of its DU (gnb_du_id):
+#   [CU-F1] Rx PDU du=1: InitialULRRCMessageTransfer   (no index yet: the DU of the next new context)
+#   [CU-F1] Tx PDU du=2 ue=15: UEContextSetupRequest
+# An inter-DU handover creates a new index on the target DU, with the NGAP context of the source index:
+#   [CU-CP] ue=8: Trigger intra-CU (inter-DU) handover from source_du=0 to target_du=1
+#   then the UEContextSetupRequest of a new index (ue=15) to the target DU.
+# A removed context ends with: [CU-CP] ue=9: "UE Removal Routine" finished successfully
+type == "dus" { if (NF >= 2) du_name[node SUBSEP "du" $1] = $2; next }
+
+type == "ocudu" && /\] ue=[0-9]+: Trigger intra-CU \(inter-DU\) handover/ {
+  match($0, /ue=[0-9]+:/); ho_src = node SUBSEP (substr($0, RSTART + 3, RLENGTH - 4) + 0)
+  next
+}
+type == "ocudu" && /"UE Removal Routine" finished/ {
+  if (match($0, /ue=[0-9]+:/)) {
+    k = node SUBSEP (substr($0, RSTART + 3, RLENGTH - 4) + 0)
+    delete crnti[k]; delete ranid[k]; delete du_of[k]; delete ho_id[k]
+  }
+  next
+}
+type == "ocudu" && / PDU du=[0-9]+/ {
+  match($0, / PDU du=[0-9]+/); du = substr($0, RSTART + 8, RLENGTH - 8) + 0
+  if (!match($0, / ue=[0-9]+[ :]/)) {                        # no index: InitialULRRCMessageTransfer
+    if (index($0, "InitialULRRCMessageTransfer")) pend_du[node] = du
+    next
+  }
+  k = node SUBSEP (substr($0, RSTART + 4, RLENGTH - 5) + 0)
+  if (ho_src != "" && index($0, "UEContextSetupRequest") && !(k in crnti) && k != ho_src) {
+    if (ho_src in ranid) ho_id[k] = ranid[ho_src]             # the target index keeps the NGAP id of the source
+    ho_src = ""
+  }
+  du_of[k] = du
+  next
+}
 type == "ocudu" {
   if (match($0, /ue=[0-9]+ c-rnti=0x[0-9a-fA-F]+/)) {
     split(substr($0, RSTART, RLENGTH), q, /[= ]/)          # ue N c-rnti 0xHHHH
     k = node SUBSEP q[2]
-    if (index($0, "UE created") || !(k in crnti)) { if (!(k in seen_k)) { seen_k[k] = 1; ok_list[++nk] = k }; delete ranid[k] }
+    if (index($0, "UE created") || !(k in crnti)) {
+      if (!(k in seen_k)) { seen_k[k] = 1; ok_list[++nk] = k }
+      delete ranid[k]
+      if (k in ho_id) ranid[k] = ho_id[k]
+      if (!(k in du_of) && (node in pend_du)) du_of[k] = pend_du[node]
+      delete pend_du[node]
+    }
     crnti[k] = hex4(q[4])
   } else if (match($0, /ue=[0-9]+ ran_ue=[0-9]+/)) {
     split(substr($0, RSTART, RLENGTH), q, /[= ]/)          # ue N ran_ue M
@@ -204,12 +246,13 @@ function ue_name(im,   k, hit, n) {
 END {
   f5gc_bind()
   load_inventory()   # the N2 captures, when present, take precedence
-  # OCUDU contexts with a known NGAP id, one row per live CU-CP index
+  # OCUDU contexts with a known NGAP id, one row per live CU-CP index, named after their DU when it is known
   for (i = 1; i <= nk; i++) {
     k = ok_list[i]
-    if (!(k in ranid)) continue
+    if (!(k in ranid) || !(k in crnti)) continue
     split(k, q, SUBSEP)
     ++nrow; r_node[nrow] = q[1]; r_rnti[nrow] = crnti[k]; r_id[nrow] = ranid[k]
+    if (k in du_of) r_assoc[nrow] = "du" du_of[k]
   }
   # RAN UE NGAP ids used by more than one RRC node
   for (i = 1; i <= nrow; i++) {

@@ -6,8 +6,11 @@
 # /rnti-mapper/sources: "<component> <namespace> <label selector> <oai|ocudu>" lines, one per RAN node running RRC.
 #   oai:   nrRRC_stats.log, rewritten every second by the gNB/CU, copied from the metrics-parser sidecar (shared
 #          log volume) or else from the RAN container working directory.
-#   ocudu: the gNB/CU logs on stdout (info level): its "c-rnti=" / "ran_ue=" lines are appended incrementally
+#   ocudu: the gNB/CU logs on stdout (info level): its "c-rnti=" / "ran_ue=" lines, and of a CU-CP its F1AP
+#          "PDU du=" lines (DU of each UE), inter-DU handover and UE removal lines, are appended incrementally
 #          (kubectl logs --since-time); the file starts again with each new pod.
+# /rnti-mapper/ocudu_dus (optional): "<CU-CP component> <gNB-DU ID> <DU component>" lines: the DU names of an OCUDU
+#   CU-CP, so each UE is reported on its DU (ran_component) instead of the CU-CP.
 # Core: AMF log (OAI: last "UEs' Information" tables; Open5GS: attach lines; free5gc: lines tagged with the UE's
 # NGAP ids; the last two incremental) and, when set,
 # the ue-mapper-api inventory (INVENTORY_URL): (gNB N3 IP, RAN UE NGAP id) <-> IMSI from the N2/PFCP captures.
@@ -22,7 +25,7 @@ mkdir -p /www "$D/ran"
 httpd -p "${PORT}" -h /www
 
 OAI_FILES="/oai-gnb-logs/nrRRC_stats.log /opt/oai-gnb/nrRRC_stats.log"
-OCUDU_PATTERN='c-rnti=0x|ran_ue='
+OCUDU_PATTERN='c-rnti=0x|ran_ue=| PDU du=[0-9]+|\(inter-DU\) handover|"UE Removal Routine" finished'
 OPEN5GS_PATTERN='InitialUEMessage|RAN_UE_NGAP_ID\[|Known UE by|Unknown UE by|\[suci-|Registration complete'
 FREE5GC_PATTERN='amf_ue_ngap_id:RU:[0-9]+,AU:[0-9]+.*(SUPI:imsi-|ran_addr:)'
 
@@ -74,9 +77,19 @@ read_oai() {
   echo "$1: no readable nrRRC_stats.log in $3 ($OAI_FILES)" >> "$D/err"
 }
 
+# DU names of the OCUDU CU-CPs: <CU-CP>@dus.txt, read by join.awk like the RAN files
+dus_files=""
+if [ -r /rnti-mapper/ocudu_dus ]; then
+  while read -r cucp du_id du; do
+    case "$cucp" in "" | \#*) continue ;; esac
+    [ -f "$D/ran/$cucp@dus.txt" ] || dus_files="$dus_files $D/ran/$cucp@dus.txt"
+    echo "$du_id $du" >> "$D/ran/$cucp@dus.txt"
+  done < /rnti-mapper/ocudu_dus
+fi
+
 while true; do
   : > "$D/err"
-  files=""
+  files="$dus_files"
   : > "$D/node_ips"
   while read -r comp ns selector type; do
     case "$comp" in "" | \#*) continue ;; esac
