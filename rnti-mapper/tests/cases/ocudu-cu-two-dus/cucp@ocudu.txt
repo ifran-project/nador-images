@@ -1,0 +1,22 @@
+2026-11-26T10:00:00.000000000Z 2026-11-26T10:00:00.000 [CU-F1   ] [I] Rx PDU du=1 tid=0 du_ue=0: InitialULRRCMessageTransfer
+2026-11-26T10:00:00.001000000Z 2026-11-26T10:00:00.001 [CU-CP   ] [I] ue=0 c-rnti=0x4601: UE created
+2026-11-26T10:00:00.002000000Z 2026-11-26T10:00:00.002 [RRC     ] [I] ue=0 c-rnti=0x4601: CCCH UL rrcSetupRequest
+2026-11-26T10:00:00.003000000Z 2026-11-26T10:00:00.003 [CU-F1   ] [I] Tx PDU du=1 ue=0 cu_ue=0 du_ue=0: DLRRCMessageTransfer
+2026-11-26T10:00:00.010000000Z 2026-11-26T10:00:00.010 [NGAP    ] [I] Tx PDU ue=0 ran_ue=0: InitialUEMessage
+2026-11-26T10:00:01.000000000Z 2026-11-26T10:00:01.000 [CU-F1   ] [I] Rx PDU du=1 tid=1 du_ue=1: InitialULRRCMessageTransfer
+2026-11-26T10:00:01.001000000Z 2026-11-26T10:00:01.001 [CU-CP   ] [I] ue=1 c-rnti=0x4602: UE created
+2026-11-26T10:00:01.010000000Z 2026-11-26T10:00:01.010 [NGAP    ] [I] Tx PDU ue=1 ran_ue=1: InitialUEMessage
+2026-11-26T10:00:02.000000000Z 2026-11-26T10:00:02.000 [CU-F1   ] [I] Rx PDU du=2 tid=0 du_ue=0: InitialULRRCMessageTransfer
+2026-11-26T10:00:02.001000000Z 2026-11-26T10:00:02.001 [CU-CP   ] [I] ue=2 c-rnti=0x4601: UE created
+2026-11-26T10:00:02.010000000Z 2026-11-26T10:00:02.010 [NGAP    ] [I] Tx PDU ue=2 ran_ue=2: InitialUEMessage
+2026-11-26T10:00:03.000000000Z 2026-11-26T10:00:03.000 [CU-F1   ] [I] Tx PDU du=1 ue=1 cu_ue=1 du_ue=1: UEContextReleaseCommand
+2026-11-26T10:00:03.001000000Z 2026-11-26T10:00:03.001 [CU-CP   ] [I] ue=1: "UE Removal Routine" finished successfully
+2026-11-26T10:00:04.000000000Z 2026-11-26T10:00:04.000 [CU-CP   ] [I] ue=0: Trigger intra-CU (inter-DU) handover from source_du=0 to target_du=1
+2026-11-26T10:00:04.001000000Z 2026-11-26T10:00:04.001 [CU-F1   ] [I] Tx PDU du=2 ue=3 cu_ue=3: UEContextSetupRequest
+2026-11-26T10:00:04.002000000Z 2026-11-26T10:00:04.002 [CU-F1   ] [I] Rx PDU du=2 ue=3 cu_ue=3 du_ue=1: UEContextSetupResponse
+2026-11-26T10:00:04.003000000Z 2026-11-26T10:00:04.003 [RRC     ] [I] ue=3 c-rnti=0x4701: UE created
+2026-11-26T10:00:04.004000000Z 2026-11-26T10:00:04.004 [CU-F1   ] [I] Tx PDU du=1 ue=0 cu_ue=0 du_ue=0: UEContextModificationRequest
+2026-11-26T10:00:04.020000000Z 2026-11-26T10:00:04.020 [RRC     ] [I] ue=3 c-rnti=0x4701: DCCH UL rrcReconfigurationComplete
+2026-11-26T10:00:04.021000000Z 2026-11-26T10:00:04.021 [CU-F1   ] [I] Rx PDU du=2 ue=3 cu_ue=3 du_ue=1: ULRRCMessageTransfer
+2026-11-26T10:00:04.030000000Z 2026-11-26T10:00:04.030 [CU-F1   ] [I] Tx PDU du=1 ue=0 cu_ue=0 du_ue=0: UEContextReleaseCommand
+2026-11-26T10:00:04.031000000Z 2026-11-26T10:00:04.031 [CU-CP   ] [I] ue=0: "UE Removal Routine" finished successfully
