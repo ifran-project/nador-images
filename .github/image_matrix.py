@@ -6,12 +6,19 @@ import subprocess
 from pathlib import Path
 
 
+# Files that build or record every image: a change rebuilds them all. Other files under .github/ do not.
+SHARED = {
+    "images.json",
+    ".dockerignore",
+    ".github/workflows/images.yml",
+    ".github/image_matrix.py",
+    ".github/update_monitoring.py",
+}
+
+
 def select_components(images: dict, changed: list[str] | None) -> list[dict]:
     """Rebuild shared consumers and components whose files changed."""
-    all_images = changed is None or any(
-        path in {"images.json", ".dockerignore"} or path.startswith(".github/")
-        for path in changed
-    )
+    all_images = changed is None or any(path in SHARED for path in changed)
     return [
         {"component": name, **config}
         for name, config in images.items()

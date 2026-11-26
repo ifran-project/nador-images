@@ -1,2 +1,2 @@
 oai
-ran_ue_info{ran_node="gnb",ran_component="gnb",rnti="4bdc",ran_ue_id="1",imsi="001010000000001",ue_name="ue1"} 1
+ran_ue_info{ran_node="gnb",ran_component="gnb",rnti="4bdc",pci="",ran_ue_id="1",imsi="001010000000001",ue_name="ue1"} 1

@@ -12,6 +12,23 @@ log_paths = {
     "rrc": "/oai-gnb-logs/nrRRC_stats.log",
 }
 
+# Labels of a UE's MAC metrics: an RNTI is unique only within a cell, so its cell (PCI, NR cell ID) is part of the
+# identity. OAI 2026.w46 writes them in the UE header; with older OAI they are empty (absent in Prometheus).
+UE_LABELS = ["rnti", "pci", "cell_id"]
+# Labels of the cell-level RRC metrics (one per cell of the DU list of nrRRC_stats.log, empty before OAI 2026.w46)
+CELL_LABELS = ["pci", "cell_id"]
+
+# Cells of this pod at the last parse: more than one makes the L1 metrics unattributable (see warn_cells)
+warned_cells = 0
+
+def warn_cells(cells):
+    """Print once, at each change, that the L1 metrics of a pod with several cells cannot be attributed."""
+    global warned_cells
+    if cells > 1 and cells != warned_cells:
+        print(f"[WARNING] {cells} cells in this gNB/DU: the L1 metrics (oai_gnb_l1_*) cannot be attributed to a cell "
+              "(nrL1_stats.log names none and every L1 instance rewrites it); use them only with one cell per pod")
+    warned_cells = cells
+
 def get_or_create_metric(metric_name, description, labelnames):
     if metric_name not in metric_defs:
         metric_defs[metric_name] = Gauge(metric_name, description, labelnames=labelnames, registry=registry)
@@ -86,88 +103,95 @@ def parse_logs():
                 lines = f.readlines()
                 current_rnti = None
                 current_cu_ue_id = None
+                current_ue = {}
+                # One "=== Cell <i> ===" section per cell since OAI 2026.w46 (none before)
+                cells = sum(1 for line in lines if line.startswith("=== Cell "))
+                if cells:
+                    get_or_create_metric("oai_gnb_cells", "Cells of this gNB or DU (more than 1: the L1 metrics are not per cell)", []).set(cells)
+                warn_cells(cells)
                 for line in lines:
                     if match := re.search(r"CU-UE-ID \(none\)", line):
                         current_rnti = None
                         current_cu_ue_id = None
                         continue  # skip this UE completely
 
-                    if match := re.search(r"UE RNTI (\w+)(?: PCI \d+ CellID \d+)? CU-UE-ID (\d+).*?PH (\d+) dB.*?PCMAX (\d+) dBm(?:.*?average RSRP (-?\d+))?", line):
+                    if match := re.search(r"UE RNTI (\w+)(?: PCI (\d+) CellID (\d+))? CU-UE-ID (\d+).*?PH (\d+) dB.*?PCMAX (\d+) dBm(?:.*?average RSRP (-?\d+))?", line):
                         current_rnti = match.group(1)
-                        current_cu_ue_id = match.group(2)
-                        get_or_create_metric("oai_gnb_mac_ph", "Power Headroom", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(3)))
-                        get_or_create_metric("oai_gnb_mac_pcmax", "PCMAX", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(4)))
-                        if match.group(5) is not None:
-                            get_or_create_metric("oai_gnb_mac_avg_rsrp", "Average RSRP", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(5)))
+                        current_cu_ue_id = match.group(4)
+                        current_ue = {"rnti": current_rnti, "pci": match.group(2) or "", "cell_id": match.group(3) or ""}
+                        get_or_create_metric("oai_gnb_mac_ph", "Power Headroom", UE_LABELS).labels(**current_ue).set(int(match.group(5)))
+                        get_or_create_metric("oai_gnb_mac_pcmax", "PCMAX", UE_LABELS).labels(**current_ue).set(int(match.group(6)))
+                        if match.group(7) is not None:
+                            get_or_create_metric("oai_gnb_mac_avg_rsrp", "Average RSRP", UE_LABELS).labels(**current_ue).set(int(match.group(7)))
 
                     if not current_rnti:
                         continue
 
                     if match := re.search(r"UE .*?CQI (\d+),? RI (\d+),? PMI\s*\(?([^,)\s\]]+(?:,[^,)\s\]]+)*)\)?", line):
-                        get_or_create_metric("oai_gnb_mac_cqi", "CQI", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(1)))
-                        get_or_create_metric("oai_gnb_mac_ri", "Rank Indicator", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(2)))
+                        get_or_create_metric("oai_gnb_mac_cqi", "CQI", UE_LABELS).labels(**current_ue).set(int(match.group(1)))
+                        get_or_create_metric("oai_gnb_mac_ri", "Rank Indicator", UE_LABELS).labels(**current_ue).set(int(match.group(2)))
 
                         pmi_raw = match.group(3).replace(" ", "")  # normalize spacing
                         pmi_parts = pmi_raw.split(",")
 
                         for i, v in enumerate(pmi_parts):
-                            get_or_create_metric("oai_gnb_mac_pmi", "PMI component", ["rnti", "index"]).labels(rnti=current_rnti, index=str(i)).set(int(v))
+                            get_or_create_metric("oai_gnb_mac_pmi", "PMI component", [*UE_LABELS, "index"]).labels(**current_ue, index=str(i)).set(int(v))
 
                     if match := re.search(r"UE .*? dlsch_rounds (\d+)/(\d+)/(\d+)/(\d+), dlsch_errors (\d+), pucch0_DTX (\d+)(?: \(SNR ([+-]?\d+(?:\.\d+)?)([+-]\d+(?:\.\d+)?)(?: dB)?\))?(?: RSSI -?\d+(?:\.\d+)?)?, BLER ([\d.]+) MCS \((\d+)\) (\d+)(?: \(Qm \d+\))? CCE fail (\d+)(?:, goodput ([\d.]+) Mbps)?", line):
-                        get_or_create_metric("oai_gnb_mac_dlsch_rounds_a", "DLSCH HARQ Round A", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(1)))
-                        get_or_create_metric("oai_gnb_mac_dlsch_rounds_b", "DLSCH HARQ Round B", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(2)))
-                        get_or_create_metric("oai_gnb_mac_dlsch_rounds_c", "DLSCH HARQ Round C", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(3)))
-                        get_or_create_metric("oai_gnb_mac_dlsch_rounds_d", "DLSCH HARQ Round D", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(4)))
-                        get_or_create_metric("oai_gnb_mac_dlsch_errors", "DLSCH Errors", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(5)))
-                        get_or_create_metric("oai_gnb_mac_pucch0_dtx", "PUCCH0 DTX", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(6)))
+                        get_or_create_metric("oai_gnb_mac_dlsch_rounds_a", "DLSCH HARQ Round A", UE_LABELS).labels(**current_ue).set(int(match.group(1)))
+                        get_or_create_metric("oai_gnb_mac_dlsch_rounds_b", "DLSCH HARQ Round B", UE_LABELS).labels(**current_ue).set(int(match.group(2)))
+                        get_or_create_metric("oai_gnb_mac_dlsch_rounds_c", "DLSCH HARQ Round C", UE_LABELS).labels(**current_ue).set(int(match.group(3)))
+                        get_or_create_metric("oai_gnb_mac_dlsch_rounds_d", "DLSCH HARQ Round D", UE_LABELS).labels(**current_ue).set(int(match.group(4)))
+                        get_or_create_metric("oai_gnb_mac_dlsch_errors", "DLSCH Errors", UE_LABELS).labels(**current_ue).set(int(match.group(5)))
+                        get_or_create_metric("oai_gnb_mac_pucch0_dtx", "PUCCH0 DTX", UE_LABELS).labels(**current_ue).set(int(match.group(6)))
 
                         if match.group(7) is not None:
-                            get_or_create_metric("oai_gnb_mac_pucch_snr_avg_db", "Average PUCCH SNR", ["rnti"]).labels(rnti=current_rnti).set(float(match.group(7)))
-                            get_or_create_metric("oai_gnb_mac_pucch_snr_delta_db", "Difference between measured and target PUCCH SNR", ["rnti"]).labels(rnti=current_rnti).set(float(match.group(8)))
+                            get_or_create_metric("oai_gnb_mac_pucch_snr_avg_db", "Average PUCCH SNR", UE_LABELS).labels(**current_ue).set(float(match.group(7)))
+                            get_or_create_metric("oai_gnb_mac_pucch_snr_delta_db", "Difference between measured and target PUCCH SNR", UE_LABELS).labels(**current_ue).set(float(match.group(8)))
 
-                        get_or_create_metric("oai_gnb_mac_dl_bler", "DLSCH BLER", ["rnti"]).labels(rnti=current_rnti).set(float(match.group(9)))
-                        get_or_create_metric("oai_gnb_mac_dl_mcs", "DLSCH MCS", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(11)))
-                        get_or_create_metric("oai_gnb_mac_cce_fail", "CCE failures", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(12)))
+                        get_or_create_metric("oai_gnb_mac_dl_bler", "DLSCH BLER", UE_LABELS).labels(**current_ue).set(float(match.group(9)))
+                        get_or_create_metric("oai_gnb_mac_dl_mcs", "DLSCH MCS", UE_LABELS).labels(**current_ue).set(int(match.group(11)))
+                        get_or_create_metric("oai_gnb_mac_cce_fail", "CCE failures", UE_LABELS).labels(**current_ue).set(int(match.group(12)))
                         if match.group(13) is not None:
-                            get_or_create_metric("oai_gnb_mac_dl_goodput_mbps","DL goodput Mbps",["rnti"]).labels(rnti=current_rnti).set(float(match.group(13)))
+                            get_or_create_metric("oai_gnb_mac_dl_goodput_mbps","DL goodput Mbps",UE_LABELS).labels(**current_ue).set(float(match.group(13)))
                         if rssi := re.search(r"\) RSSI (-?\d+(?:\.\d+)?), BLER", line):
-                            get_or_create_metric("oai_gnb_mac_pucch_rssi", "PUCCH RSSI", ["rnti"]).labels(rnti=current_rnti).set(float(rssi.group(1)))
+                            get_or_create_metric("oai_gnb_mac_pucch_rssi", "PUCCH RSSI", UE_LABELS).labels(**current_ue).set(float(rssi.group(1)))
 
                     if match := re.search(r"UE .*?ulsch_rounds (\d+)/(\d+)/(\d+)/(\d+), ulsch_errors (\d+), ulsch_DTX (\d+), BLER ([\d.]+) MCS \((\d+)\) (\d+) \(Qm (\d+) deltaMCS ([+-]?\d+(?:\.\d+)?)(?: dB)?\) NPRB (\d+) SNR ([+-]?\d+(?:\.\d+)?) \(([+-]?\d+(?:\.\d+)?)\)(?: dB)?(?: RSSI -?\d+(?:\.\d+)?)? CCE fail (\d+)(?:, goodput ([\d.]+) Mbps)?", line):
-                        get_or_create_metric("oai_gnb_mac_ulsch_rounds_a", "ULSCH HARQ Round A", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(1)))
-                        get_or_create_metric("oai_gnb_mac_ulsch_rounds_b", "ULSCH HARQ Round B", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(2)))
-                        get_or_create_metric("oai_gnb_mac_ulsch_rounds_c", "ULSCH HARQ Round C", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(3)))
-                        get_or_create_metric("oai_gnb_mac_ulsch_rounds_d", "ULSCH HARQ Round D", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(4)))
-                        get_or_create_metric("oai_gnb_mac_ulsch_errors", "ULSCH Errors", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(5)))
-                        get_or_create_metric("oai_gnb_mac_ulsch_dtx", "ULSCH DTX", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(6)))
-                        get_or_create_metric("oai_gnb_mac_ul_bler", "ULSCH BLER", ["rnti"]).labels(rnti=current_rnti).set(float(match.group(7)))
-                        get_or_create_metric("oai_gnb_mac_ul_mcs_index", "ULSCH MCS index in parentheses", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(8)))
-                        get_or_create_metric("oai_gnb_mac_ul_mcs", "ULSCH MCS value", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(9)))
-                        get_or_create_metric("oai_gnb_mac_qm", "Modulation Order Qm", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(10)))
-                        get_or_create_metric("oai_gnb_mac_delta_mcs", "Delta MCS dB", ["rnti"]).labels(rnti=current_rnti).set(float(match.group(11)))
-                        get_or_create_metric("oai_gnb_mac_nprb", "Allocated PRBs", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(12)))
-                        get_or_create_metric("oai_gnb_mac_ul_snr_avg_db", "Average ULSCH SNR", ["rnti"]).labels(rnti=current_rnti).set(float(match.group(13)))
-                        get_or_create_metric("oai_gnb_mac_ul_snr_delta_db", "Difference between measured and target ULSCH SNR", ["rnti"]).labels(rnti=current_rnti).set(float(match.group(14)))
-                        get_or_create_metric("oai_gnb_mac_cce_fail","CCE Failures", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(15)))
+                        get_or_create_metric("oai_gnb_mac_ulsch_rounds_a", "ULSCH HARQ Round A", UE_LABELS).labels(**current_ue).set(int(match.group(1)))
+                        get_or_create_metric("oai_gnb_mac_ulsch_rounds_b", "ULSCH HARQ Round B", UE_LABELS).labels(**current_ue).set(int(match.group(2)))
+                        get_or_create_metric("oai_gnb_mac_ulsch_rounds_c", "ULSCH HARQ Round C", UE_LABELS).labels(**current_ue).set(int(match.group(3)))
+                        get_or_create_metric("oai_gnb_mac_ulsch_rounds_d", "ULSCH HARQ Round D", UE_LABELS).labels(**current_ue).set(int(match.group(4)))
+                        get_or_create_metric("oai_gnb_mac_ulsch_errors", "ULSCH Errors", UE_LABELS).labels(**current_ue).set(int(match.group(5)))
+                        get_or_create_metric("oai_gnb_mac_ulsch_dtx", "ULSCH DTX", UE_LABELS).labels(**current_ue).set(int(match.group(6)))
+                        get_or_create_metric("oai_gnb_mac_ul_bler", "ULSCH BLER", UE_LABELS).labels(**current_ue).set(float(match.group(7)))
+                        get_or_create_metric("oai_gnb_mac_ul_mcs_index", "ULSCH MCS index in parentheses", UE_LABELS).labels(**current_ue).set(int(match.group(8)))
+                        get_or_create_metric("oai_gnb_mac_ul_mcs", "ULSCH MCS value", UE_LABELS).labels(**current_ue).set(int(match.group(9)))
+                        get_or_create_metric("oai_gnb_mac_qm", "Modulation Order Qm", UE_LABELS).labels(**current_ue).set(int(match.group(10)))
+                        get_or_create_metric("oai_gnb_mac_delta_mcs", "Delta MCS dB", UE_LABELS).labels(**current_ue).set(float(match.group(11)))
+                        get_or_create_metric("oai_gnb_mac_nprb", "Allocated PRBs", UE_LABELS).labels(**current_ue).set(int(match.group(12)))
+                        get_or_create_metric("oai_gnb_mac_ul_snr_avg_db", "Average ULSCH SNR", UE_LABELS).labels(**current_ue).set(float(match.group(13)))
+                        get_or_create_metric("oai_gnb_mac_ul_snr_delta_db", "Difference between measured and target ULSCH SNR", UE_LABELS).labels(**current_ue).set(float(match.group(14)))
+                        get_or_create_metric("oai_gnb_mac_cce_fail","CCE Failures", UE_LABELS).labels(**current_ue).set(int(match.group(15)))
                         if match.group(16) is not None:
-                            get_or_create_metric("oai_gnb_mac_ul_goodput_mbps", "UL Goodput", ["rnti"]).labels(rnti=current_rnti).set(float(match.group(16)))
+                            get_or_create_metric("oai_gnb_mac_ul_goodput_mbps", "UL Goodput", UE_LABELS).labels(**current_ue).set(float(match.group(16)))
                         if rssi := re.search(r"RSSI (-?\d+(?:\.\d+)?) CCE fail", line):
-                            get_or_create_metric("oai_gnb_mac_ul_rssi", "ULSCH RSSI", ["rnti"]).labels(rnti=current_rnti).set(float(rssi.group(1)))
+                            get_or_create_metric("oai_gnb_mac_ul_rssi", "ULSCH RSSI", UE_LABELS).labels(**current_ue).set(float(rssi.group(1)))
 
                     # Goodput on its own line: "UE 218f: LCID 1,2,4, goodput DL    0.00 UL    0.00 Mbps"
                     if match := re.search(r"goodput DL\s+([\d.]+)\s+UL\s+([\d.]+)\s+Mbps", line):
-                        get_or_create_metric("oai_gnb_mac_dl_goodput_mbps","DL goodput Mbps",["rnti"]).labels(rnti=current_rnti).set(float(match.group(1)))
-                        get_or_create_metric("oai_gnb_mac_ul_goodput_mbps", "UL Goodput", ["rnti"]).labels(rnti=current_rnti).set(float(match.group(2)))
+                        get_or_create_metric("oai_gnb_mac_dl_goodput_mbps","DL goodput Mbps",UE_LABELS).labels(**current_ue).set(float(match.group(1)))
+                        get_or_create_metric("oai_gnb_mac_ul_goodput_mbps", "UL Goodput", UE_LABELS).labels(**current_ue).set(float(match.group(2)))
                         # Active logical channels listed before goodput, e.g. "LCID 1,2,4,"
                         # (LCID 4 = first DRB, used to count UEs with an established data bearer)
                         if lcids := re.search(r"LCID ([\d,]+), goodput", line):
                             for lcid in filter(None, lcids.group(1).split(",")):
-                                get_or_create_metric("oai_gnb_mac_lcid_active", "Logical channel present for this UE (1 = listed in MAC stats)", ["rnti", "lcid"]).labels(rnti=current_rnti, lcid=lcid).set(1)
+                                get_or_create_metric("oai_gnb_mac_lcid_active", "Logical channel present for this UE (1 = listed in MAC stats)", [*UE_LABELS, "lcid"]).labels(**current_ue, lcid=lcid).set(1)
 
                     if match := re.search(r"LCID (\d+): TX\s+(\d+)\s+RX\s+(\d+)", line):
-                        get_or_create_metric("oai_gnb_mac_lcid_tx_bytes", "LCID TX Bytes", ["rnti", "lcid"]).labels(rnti=current_rnti, lcid=match.group(1)).set(int(match.group(2)))
-                        get_or_create_metric("oai_gnb_mac_lcid_rx_bytes", "LCID RX Bytes", ["rnti", "lcid"]).labels(rnti=current_rnti, lcid=match.group(1)).set(int(match.group(3)))
-                        get_or_create_metric("oai_gnb_mac_lcid_active", "Logical channel present for this UE (1 = listed in MAC stats)", ["rnti", "lcid"]).labels(rnti=current_rnti, lcid=match.group(1)).set(1)
+                        get_or_create_metric("oai_gnb_mac_lcid_tx_bytes", "LCID TX Bytes", [*UE_LABELS, "lcid"]).labels(**current_ue, lcid=match.group(1)).set(int(match.group(2)))
+                        get_or_create_metric("oai_gnb_mac_lcid_rx_bytes", "LCID RX Bytes", [*UE_LABELS, "lcid"]).labels(**current_ue, lcid=match.group(1)).set(int(match.group(3)))
+                        get_or_create_metric("oai_gnb_mac_lcid_active", "Logical channel present for this UE (1 = listed in MAC stats)", [*UE_LABELS, "lcid"]).labels(**current_ue, lcid=match.group(1)).set(1)
     except Exception as e:
         print(f"[ERROR] MAC parsing failed: {e}")
 
@@ -177,15 +201,26 @@ def parse_logs():
             with open(log_paths["rrc"], "r") as f:
                 lines = f.readlines()
 
-                # Parse gNB-level parameters after UE blocks
+                # Parse cell-level parameters after UE blocks. Since OAI 2026.w46 the DU list gives each cell:
+                #   "  [1] nrCellID 12345678, PCI 1, Mode TDD, SSB ARFCN 640000"
+                #   "      TDD: band 78 ARFCN 641280 SCS 30 (kHz) PRB 106"   (FDD: a "DL:" and a "UL:" line)
+                # and the values that follow a cell line belong to it.
+                cell = {"pci": "", "cell_id": ""}
                 for line in lines:
+                    if match := re.search(r"nrCellID (\d+), PCI (\d+)", line):
+                        cell = {"pci": match.group(2), "cell_id": match.group(1)}
                     # SSB ARFCN
                     if match := re.search(r"SSB ARFCN (\d+)", line):
-                        get_or_create_metric("oai_gnb_rrc_ssb_arfcn", "SSB ARFCN", []).set(int(match.group(1)))
-                    # ARFCN and SCS
+                        get_or_create_metric("oai_gnb_rrc_ssb_arfcn", "SSB ARFCN", CELL_LABELS).labels(**cell).set(int(match.group(1)))
+                    # ARFCN and SCS of the downlink (TDD: the only carrier); the FDD uplink line is not the cell's ARFCN
+                    if line.lstrip().startswith("UL:"):
+                        continue
                     if match := re.search(r"ARFCN (\d+) SCS (\d+) \(kHz\)", line):
-                        get_or_create_metric("oai_gnb_rrc_arfcn", "ARFCN", []).set(int(match.group(1)))
-                        get_or_create_metric("oai_gnb_rrc_scs_khz", "Subcarrier Spacing (kHz)", []).set(int(match.group(2)))
+                        get_or_create_metric("oai_gnb_rrc_arfcn", "ARFCN", CELL_LABELS).labels(**cell).set(int(match.group(1)))
+                        get_or_create_metric("oai_gnb_rrc_scs_khz", "Subcarrier Spacing (kHz)", CELL_LABELS).labels(**cell).set(int(match.group(2)))
+                        # PRBs of the cell (OAI 2026.w46 and later): the denominator of a UE's PRB saturation per cell
+                        if prbs := re.search(r"\(kHz\) PRB (\d+)", line):
+                            get_or_create_metric("oai_gnb_rrc_prbs", "PRBs of the cell (downlink)", CELL_LABELS).labels(**cell).set(int(prbs.group(1)))
     except Exception as e:
         print(f"[ERROR] RRC parsing failed: {e}")
 

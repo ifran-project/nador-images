@@ -1,9 +1,11 @@
 # Join the RAN view (RNTI <-> RAN UE NGAP id, per RRC node) with the core view (RAN UE NGAP id <-> IMSI) and the
 # UE names, and print the Prometheus info metric
-#   ran_ue_info{ran_node,ran_component,rnti,ran_ue_id,imsi,ue_name} 1
+#   ran_ue_info{ran_node,ran_component,rnti,pci,ran_ue_id,imsi,ue_name} 1
 # ran_node is the gNB / CU / CU-CP whose RRC holds the UE context; ran_component is the cell's gNB or DU (the DU name
 # is the nador component name), as in the service label metrics-ran-<component> of the OAI gNB/DU metrics.
-# rnti is 4-digit lowercase hex, as written by OAI ("RNTI %04x") and shown by OCUDU ("c-rnti=0x...").
+# rnti is 4-digit lowercase hex, as written by OAI ("RNTI %04x") and shown by OCUDU ("c-rnti=0x..."). An RNTI is
+# unique only within a cell: pci is the PCI of the UE's cell when the logs give it (OAI 2026.w46 and later: the
+# serving cell of the UE's measurement report, else the cell of a DU that has only one), else empty.
 #
 # Usage: awk -v core=oai|open5gs|free5gc -f join.awk ue_names core.log inventory.json node_ips <dir>/<component>@<oai|ocudu>.txt ...
 #   ue_names       "IMSI name" lines ('#' comments)
@@ -148,13 +150,15 @@ function load_inventory(   n, i, o, id, im, ip) {
 # RAN files: <component>@<type>.txt
 FNR == 1 && FILENAME != ARGV[1] && FILENAME != ARGV[2] && FILENAME != ARGV[3] && FILENAME != ARGV[4] {
   src = FILENAME; sub(/^.*\//, "", src); sub(/\.txt$/, "", src)
-  split(src, sp, "@"); node = sp[1]; type = sp[2]; cur_ue = ""; ho_src = ""
+  split(src, sp, "@"); node = sp[1]; type = sp[2]; cur_ue = ""; ho_src = ""; cur_du = ""
 }
 
 # OAI nrRRC_stats.log:
 #   "UE 0 CU UE ID 1 DU UE ID 19420 RNTI 4bdc random identity ...:"   (CU UE ID = RAN UE NGAP id)
 #   "    associated DU:  (local/integrated CU-DU)" | " DU assoc ID 7" | " DU offline/unavailable"
-#   "[1] DU ID 3584 (du1) assoc_id 7: 1 cell"                           (after the UE list)
+#   "    servingCellId 0 MeasResultNR for phyCellId 1:"                (with a measurement report, OAI 2026.w46)
+#   "[1] DU ID 3584 (du1) assoc_id 7: 1 cell" | "[1] DU ID 3584 (gnb) integrated DU-CU: 2 cells"   (after the UE list)
+#   "  [1] nrCellID 12345678, PCI 1, Mode TDD, SSB ARFCN 640000"        (each cell of that DU, OAI 2026.w46)
 type == "oai" && /^UE [0-9]+ CU UE ID / {
   cu = ""; rnti = ""
   for (i = 1; i <= NF; i++) {
@@ -167,13 +171,23 @@ type == "oai" && /^UE [0-9]+ CU UE ID / {
 }
 type == "oai" && cur_ue != "" && /^ *associated DU:/ {
   if (match($0, /DU assoc ID -?[0-9]+/)) r_assoc[cur_ue] = substr($0, RSTART + 12, RLENGTH - 12) + 0   # after "DU assoc ID "
+  else if (index($0, "integrated")) r_assoc[cur_ue] = -1
+  next
+}
+type == "oai" && cur_ue != "" && /MeasResultNR for phyCellId [0-9]+/ {
+  match($0, /MeasResultNR for phyCellId [0-9]+/); r_pci[cur_ue] = substr($0, RSTART + 27, RLENGTH - 27) + 0
   next
 }
 type == "oai" && /^\[[0-9]+\] DU ID [0-9]+ \(/ {
+  cur_ue = ""; cur_du = ""
   if (match($0, /\([^)]*\) assoc_id -?[0-9]+/)) {
     s = substr($0, RSTART + 1, RLENGTH - 1)            # "du1) assoc_id 7"
-    split(s, q, /\) assoc_id /); du_name[node SUBSEP (q[2] + 0)] = q[1]
-  }
+    split(s, q, /\) assoc_id /); du_name[node SUBSEP (q[2] + 0)] = q[1]; cur_du = node SUBSEP (q[2] + 0)
+  } else if (index($0, "integrated DU-CU")) cur_du = node SUBSEP -1
+  next
+}
+type == "oai" && cur_du != "" && /^ *\[[0-9]+\] nrCellID [0-9]+, PCI [0-9]+/ {
+  match($0, /PCI [0-9]+/); du_ncell[cur_du]++; du_pci[cur_du] = substr($0, RSTART + 4, RLENGTH - 4) + 0
   next
 }
 
@@ -269,7 +283,11 @@ END {
     else im = "unknown"
     comp = r_node[i]
     if ((i in r_assoc) && ((r_node[i] SUBSEP r_assoc[i]) in du_name)) comp = du_name[r_node[i] SUBSEP r_assoc[i]]
-    printf "ran_ue_info{ran_node=\"%s\",ran_component=\"%s\",rnti=\"%s\",ran_ue_id=\"%s\",imsi=\"%s\",ue_name=\"%s\"} 1\n", \
-      r_node[i], comp, r_rnti[i], id, im, ue_name(im)
+    # the UE's cell: its measurement report, else the only cell of its DU
+    pci = ""
+    if (i in r_pci) pci = r_pci[i]
+    else if ((i in r_assoc) && du_ncell[r_node[i] SUBSEP r_assoc[i]] == 1) pci = du_pci[r_node[i] SUBSEP r_assoc[i]]
+    printf "ran_ue_info{ran_node=\"%s\",ran_component=\"%s\",rnti=\"%s\",pci=\"%s\",ran_ue_id=\"%s\",imsi=\"%s\",ue_name=\"%s\"} 1\n", \
+      r_node[i], comp, r_rnti[i], pci, id, im, ue_name(im)
   }
 }

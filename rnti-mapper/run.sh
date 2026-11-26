@@ -1,6 +1,6 @@
 #!/bin/sh
 # rnti-mapper: every PERIOD seconds, rebuild /www/metrics with one
-#   ran_ue_info{ran_node,ran_component,rnti,ran_ue_id,imsi,ue_name} 1
+#   ran_ue_info{ran_node,ran_component,rnti,pci,ran_ue_id,imsi,ue_name} 1
 # line per UE context of the RRC of each gNB / CU / CU-CP, and serve it with busybox httpd.
 #
 # /rnti-mapper/sources: "<component> <namespace> <label selector> <oai|ocudu>" lines, one per RAN node running RRC.

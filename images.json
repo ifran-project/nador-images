@@ -98,5 +98,14 @@
     "version_record": "versions/rnti-mapper/2026w48.json",
     "ghcr_image": "ghcr.io/ifran-project/nador-rnti-mapper:2026w48",
     "monitoring_target": "rnti_mapper"
+  },
+  "oai-gnb-metrics-parser": {
+    "dockerfile": "oai-gnb-metrics-parser/Dockerfile",
+    "context": "oai-gnb-metrics-parser",
+    "platform": "linux/amd64",
+    "current_version": "2026w48",
+    "version_record": "versions/oai-gnb-metrics-parser/2026w48.json",
+    "ghcr_image": "ghcr.io/ifran-project/oai-gnb-metrics-parser:2026w48",
+    "monitoring_target": "oai_gnb_metrics_parser"
   }
 }

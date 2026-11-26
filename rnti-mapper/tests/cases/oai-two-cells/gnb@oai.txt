@@ -1,0 +1,23 @@
+UE 0 CU UE ID 1 DU UE ID 1 RNTI 4601 random identity 0123456789abcdef:
+    last RRC activity: 1 seconds ago
+    PDU session ID 1 status established
+    associated DU:  (local/integrated CU-DU)
+    servingCellId 0 MeasResultNR for phyCellId 2:
+      resultSSB: RSRP -80 dBm RSRQ -10.0 dB SINR 20.0 dB
+    neighboring cell for phyCellId 1:
+      resultSSB: RSRP -95 dBm RSRQ -12.0 dB SINR 5.0 dB
+UE 1 CU UE ID 2 DU UE ID 2 RNTI 4601 random identity 1123456789abcdef:
+    last RRC activity: 2 seconds ago
+    associated DU:  (local/integrated CU-DU)
+    servingCellId 0 MeasResultNR for phyCellId 1:
+      resultSSB: RSRP -85 dBm RSRQ -11.0 dB SINR 15.0 dB
+UE 2 CU UE ID 3 DU UE ID 3 RNTI 4602 random identity 2123456789abcdef:
+    last RRC activity: 3 seconds ago
+    associated DU:  (local/integrated CU-DU)
+
+1 connected DUs 
+[1] DU ID 3584 (gnb) integrated DU-CU: 2 cells
+  [1] nrCellID 12345678, PCI 1, Mode TDD, SSB ARFCN 640000
+      TDD: band 78 ARFCN 641280 SCS 30 (kHz) PRB 106
+  [2] nrCellID 12345679, PCI 2, Mode TDD, SSB ARFCN 650000
+      TDD: band 78 ARFCN 651000 SCS 30 (kHz) PRB 106

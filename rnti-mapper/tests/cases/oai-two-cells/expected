@@ -1,0 +1,5 @@
+open5gs
+ran_ue_info{ran_node="gnb",ran_component="gnb",rnti="4601",pci="2",ran_ue_id="1",imsi="001010000000001",ue_name="ue1"} 1
+ran_ue_info{ran_node="gnb",ran_component="gnb",rnti="4601",pci="1",ran_ue_id="2",imsi="001010000000002",ue_name="ue2"} 1
+ran_ue_info{ran_node="gnb",ran_component="gnb",rnti="4602",pci="",ran_ue_id="3",imsi="001010000000003",ue_name="ue3"} 1
+ran_ue_info{ran_node="cu",ran_component="du1",rnti="4bdc",pci="7",ran_ue_id="4",imsi="001010000000004",ue_name="ue4"} 1
