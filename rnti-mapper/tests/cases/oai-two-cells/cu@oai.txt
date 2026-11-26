@@ -1,0 +1,8 @@
+UE 0 CU UE ID 4 DU UE ID 19420 RNTI 4bdc random identity 3123456789abcdef:
+    associated DU:  DU assoc ID 7
+
+1 connected DUs 
+[1] DU ID 3585 (du1) assoc_id 7: 1 cell
+  [1] nrCellID 22222222, PCI 7, Mode FDD, SSB ARFCN 368410
+      DL:  band 3 ARFCN 368500 SCS 15 (kHz) PRB 52
+      UL:  band 3 ARFCN 349500 SCS 15 (kHz) PRB 52

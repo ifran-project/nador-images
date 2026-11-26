@@ -1,2 +1,2 @@
 open5gs
-ran_ue_info{ran_node="gnb",ran_component="gnb",rnti="4601",ran_ue_id="0",imsi="001010000000002",ue_name="ue2"} 1
+ran_ue_info{ran_node="gnb",ran_component="gnb",rnti="4601",pci="",ran_ue_id="0",imsi="001010000000002",ue_name="ue2"} 1
