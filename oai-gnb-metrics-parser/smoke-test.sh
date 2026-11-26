@@ -12,9 +12,13 @@ cleanup() {
 trap cleanup EXIT
 
 printf 'SSB ARFCN 640000\nARFCN 641280 SCS 30 (kHz)\n' > "$runtime_dir/nrRRC_stats.log"
-# UE header of OAI 2026.w46 and later, with the PCI and cell ID of the UE (R2Lab, 21 November 2026), then the older
-# header without them (OAI before 2026.w46)
-printf 'UE RNTI e8a9 PCI 1 CellID 2 CU-UE-ID 1 in-sync PH 48 dB PCMAX 24 dBm, average RSRP -74 (32 meas)\n' \
+# UE header of OAI 2026.w46 and later, with the PCI and cell ID of the UE (R2Lab, 21 November 2026), a second cell
+# with a UE of the same RNTI (an RNTI is unique only within a cell), then the older header without them (OAI before
+# 2026.w46)
+printf '%s\n' '=== Cell 0 ===' \
+  'UE RNTI e8a9 PCI 1 CellID 2 CU-UE-ID 1 in-sync PH 48 dB PCMAX 24 dBm, average RSRP -74 (32 meas)' \
+  '=== Cell 1 ===' \
+  'UE RNTI e8a9 PCI 3 CellID 4 CU-UE-ID 3 in-sync PH 30 dB PCMAX 22 dBm, average RSRP -90 (10 meas)' \
   > "$runtime_dir/nrMAC_stats.log"
 printf 'UE RNTI 4601 CU-UE-ID 2 in-sync PH 40 dB PCMAX 23 dBm, average RSRP -80 (16 meas)\n' \
   >> "$runtime_dir/nrMAC_stats.log"
@@ -36,14 +40,15 @@ for attempt in range(20):
         time.sleep(0.5)
 
 expected = {
-    "oai_gnb_rrc_arfcn 641280.0",
-    "oai_gnb_rrc_scs_khz 30.0",
-    'oai_gnb_mac_ph{rnti="e8a9"} 48.0',
-    'oai_gnb_mac_pcmax{rnti="e8a9"} 24.0',
-    'oai_gnb_mac_avg_rsrp{rnti="e8a9"} -74.0',
-    'oai_gnb_mac_ph{rnti="4601"} 40.0',
-    'oai_gnb_mac_pcmax{rnti="4601"} 23.0',
-    'oai_gnb_mac_avg_rsrp{rnti="4601"} -80.0',
+    'oai_gnb_rrc_arfcn{cell_id="",pci=""} 641280.0',
+    'oai_gnb_rrc_scs_khz{cell_id="",pci=""} 30.0',
+    'oai_gnb_mac_ph{cell_id="2",pci="1",rnti="e8a9"} 48.0',
+    'oai_gnb_mac_pcmax{cell_id="2",pci="1",rnti="e8a9"} 24.0',
+    'oai_gnb_mac_avg_rsrp{cell_id="2",pci="1",rnti="e8a9"} -74.0',
+    'oai_gnb_mac_ph{cell_id="4",pci="3",rnti="e8a9"} 30.0',
+    'oai_gnb_mac_ph{cell_id="",pci="",rnti="4601"} 40.0',
+    'oai_gnb_mac_pcmax{cell_id="",pci="",rnti="4601"} 23.0',
+    'oai_gnb_mac_avg_rsrp{cell_id="",pci="",rnti="4601"} -80.0',
 }
 missing = expected - set(metrics.splitlines())
 if missing:
