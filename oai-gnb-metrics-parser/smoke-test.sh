@@ -12,6 +12,10 @@ cleanup() {
 trap cleanup EXIT
 
 printf 'SSB ARFCN 640000\nARFCN 641280 SCS 30 (kHz)\n' > "$runtime_dir/nrRRC_stats.log"
+# DU list of OAI 2026.w46 and later: each cell with its PCI, ARFCN, SCS and PRBs
+printf '%s\n' '[1] DU ID 3584 (gnb) integrated DU-CU: 1 cell' \
+  '  [1] nrCellID 12345678, PCI 1, Mode TDD, SSB ARFCN 650016' \
+  '      TDD: band 78 ARFCN 651000 SCS 30 (kHz) PRB 106' >> "$runtime_dir/nrRRC_stats.log"
 # UE header of OAI 2026.w46 and later, with the PCI and cell ID of the UE (R2Lab, 21 November 2026), a second cell
 # with a UE of the same RNTI (an RNTI is unique only within a cell), then the older header without them (OAI before
 # 2026.w46)
@@ -42,6 +46,9 @@ for attempt in range(20):
 expected = {
     'oai_gnb_rrc_arfcn{cell_id="",pci=""} 641280.0',
     'oai_gnb_rrc_scs_khz{cell_id="",pci=""} 30.0',
+    'oai_gnb_rrc_arfcn{cell_id="12345678",pci="1"} 651000.0',
+    'oai_gnb_rrc_ssb_arfcn{cell_id="12345678",pci="1"} 650016.0',
+    'oai_gnb_rrc_prbs{cell_id="12345678",pci="1"} 106.0',
     'oai_gnb_mac_ph{cell_id="2",pci="1",rnti="e8a9"} 48.0',
     'oai_gnb_mac_pcmax{cell_id="2",pci="1",rnti="e8a9"} 24.0',
     'oai_gnb_mac_avg_rsrp{cell_id="2",pci="1",rnti="e8a9"} -74.0',

@@ -13,11 +13,17 @@ older one without PCI and cell ID: without it, the per-UE MAC metrics
 
 An RNTI is unique only within a cell, so the per-UE MAC metrics carry the cell
 of the UE header (`pci`, `cell_id`), and the cell-level RRC metrics (SSB ARFCN,
-ARFCN, SCS) the cell of the DU list of `nrRRC_stats.log`; the ARFCN is the
-downlink one (FDD). Before OAI 2026.w46 these labels are empty. The L1
-metrics (`oai_gnb_l1_*`, from `nrL1_stats.log`) have no cell: OAI writes none
-in that file, and every L1 instance of a gNB writes the same file, so they are
-right only with one cell per gNB or DU.
+ARFCN, SCS, PRBs) the cell of the DU list of `nrRRC_stats.log`; the ARFCN and
+PRBs are the downlink ones (FDD). Before OAI 2026.w46 these labels are empty.
+
+Several gNBs, CUs or DUs run in several pods, each with its own parser: their
+metrics are told apart by their pod, whatever the number of cells. The one
+case that is not supported is **one OAI gNB or DU pod serving several cells**,
+and only for the L1 metrics (`oai_gnb_l1_*`, from `nrL1_stats.log`): OAI writes
+no cell in that file, and every L1 instance of the pod rewrites the same file
+every second, so the values are those of whichever cell wrote last. The PRB
+saturation of the KPI calculator uses the PRBs of the UE's cell
+(`oai_gnb_rrc_prbs`) when the pod has them (a gNB), else the L1 total.
 
 The upstream parser files are redistributed with permission; this import does
 not change their licensing terms.

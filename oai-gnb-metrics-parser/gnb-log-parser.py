@@ -202,6 +202,9 @@ def parse_logs():
                     if match := re.search(r"ARFCN (\d+) SCS (\d+) \(kHz\)", line):
                         get_or_create_metric("oai_gnb_rrc_arfcn", "ARFCN", CELL_LABELS).labels(**cell).set(int(match.group(1)))
                         get_or_create_metric("oai_gnb_rrc_scs_khz", "Subcarrier Spacing (kHz)", CELL_LABELS).labels(**cell).set(int(match.group(2)))
+                        # PRBs of the cell (OAI 2026.w46 and later): the denominator of a UE's PRB saturation per cell
+                        if prbs := re.search(r"\(kHz\) PRB (\d+)", line):
+                            get_or_create_metric("oai_gnb_rrc_prbs", "PRBs of the cell (downlink)", CELL_LABELS).labels(**cell).set(int(prbs.group(1)))
     except Exception as e:
         print(f"[ERROR] RRC parsing failed: {e}")
 

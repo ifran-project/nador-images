@@ -159,8 +159,9 @@ def get_number_ues():
 
 def get_saturation_percentage_per_rnti():
     """
-    PRBs scheduled for each UE, in percent of the PRBs of its own gNB or DU (oai_gnb_l1_total_prbs of the same
-    radio), 0 for a UE without LCID 4 (not connected).
+    PRBs scheduled for each UE, in percent of the PRBs of its cell: oai_gnb_rrc_prbs of the same radio and cell when
+    the radio has them (a gNB, OAI 2026.w46 and later: its RRC lists its cells), else oai_gnb_l1_total_prbs of the same
+    radio (one L1 per pod). 0 for a UE without LCID 4 (not connected).
     Returns {(source_namespace, ran_component, pci, rnti): value (percentage)}
     """
     connected = _connected_ues()
@@ -172,15 +173,21 @@ def get_saturation_percentage_per_rnti():
             total_prbs[_radio(result["metric"])] = float(result["value"][1])
         except (KeyError, ValueError) as e:
             log.warning(f"Failed to parse total PRBs: {e}")
-    if not total_prbs:
-        log.warning("No results for oai_gnb_l1_total_prbs")
+    cell_prbs = {}
+    for result in query_prometheus({"query": 'oai_gnb_rrc_prbs{pci!=""}'}, MONARCH_THANOS_URL) or []:
+        try:
+            cell_prbs[(*_radio(result["metric"]), result["metric"]["pci"])] = float(result["value"][1])
+        except (KeyError, ValueError) as e:
+            log.warning(f"Failed to parse cell PRBs: {e}")
+    if not total_prbs and not cell_prbs:
+        log.warning("No results for oai_gnb_l1_total_prbs or oai_gnb_rrc_prbs")
         return {}
 
     saturation = {}
     for result in query_prometheus({"query": "oai_gnb_mac_nprb"}, MONARCH_THANOS_URL) or []:
         identity = _ue(result["metric"])
-        total = total_prbs.get(identity[:2]) if identity else None
-        if not total:  # no total for this radio, or zero
+        total = (cell_prbs.get(identity[:3]) or total_prbs.get(identity[:2])) if identity else None
+        if not total:  # no total for this radio or cell, or zero
             continue
         try:
             nprb = float(result["value"][1]) if identity in connected else 0.0
